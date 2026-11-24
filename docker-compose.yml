@@ -1,0 +1,41 @@
+# 24/7 paper + shadow trading. No exchange keys are needed or passed: there is deliberately NO env_file,
+# so the real keys in .env never enter these containers (RULE 6). Live trading is not defined here.
+x-bot: &bot
+  build: .
+  image: india-crypto-bot:latest
+  restart: unless-stopped
+  environment: &env
+    TZ: UTC
+    STRATEGY: ensemble
+    MARKET: spot
+    START_EQUITY_USD: "113.6"
+  volumes:
+    - ./state:/app/state      # state.db, paper exchange, ledgers, logs, lock files
+    - ./data:/app/data
+    - ./models:/app/models
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+services:
+  paper:
+    <<: *bot
+    environment: {<<: *env, BOT_MODE: paper}
+    command: ["python", "-m", "bot.main", "paper"]
+    healthcheck:   # unhealthy if no heartbeat line for 40 min (one is written every 15 min)
+      test: ["CMD", "python", "-c", "import time,os,sys; p='/app/state/paper.log'; sys.exit(0 if time.time()-os.path.getmtime(p) < 2400 else 1)"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 20m
+
+  shadow:
+    <<: *bot
+    environment: {<<: *env, BOT_MODE: shadow}
+    command: ["python", "-m", "bot.main", "shadow"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import time,os,sys; p='/app/state/shadow.log'; sys.exit(0 if time.time()-os.path.getmtime(p) < 2400 else 1)"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 20m

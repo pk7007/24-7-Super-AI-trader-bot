@@ -1,0 +1,24 @@
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+
+# Python
+*.pyc
+__pycache__/
+.pytest_cache/
+venv/
+.venv/
+
+# Local runtime data (large or private)
+data/
+state/
+models/
+reports/
+trades_ledger.csv
+*.log
+*.lock
+*.tmp
+
+# Build output
+deploy/bundle.tar.gz

@@ -1,0 +1,18 @@
+# Never send secrets or bulky/stateful folders to the Docker build context.
+.*
+.env
+.env.*
+!.env.example
+state
+data
+models
+reports
+deploy
+refs
+venv
+.venv
+.pytest_cache
+__pycache__
+*.pyc
+trades_ledger.csv
+*.log
