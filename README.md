@@ -31,6 +31,7 @@ Rule-based trend strategies · Strict risk limits · Exchange-side stops · Cras
 - [Results so far](#results-so-far)
 - [Quick start](#quick-start)
 - [Commands](#commands)
+- [Dashboard (read-only)](#dashboard-read-only)
 - [Configuration](#configuration)
 - [Safety rules](#safety-rules)
 - [Architecture](#architecture)
@@ -134,6 +135,22 @@ All commands run as `python -m bot.main <command>`.
 | `testnet-check` | Step-by-step verification of the Delta broker on testnet. |
 | `live` | Real orders on Delta Exchange. Locked behind explicit consent; see below. |
 
+## Dashboard (read-only)
+
+A browser dashboard, **AI Trade Labs**, shows what the bots are doing: equity, positions, fills, per-candle decisions,
+loss limits, live candles, strategy and backtest evidence, capital feasibility, tax ledger, health and logs. It only
+reads the bots' files; it cannot place orders or change settings, and live trading shows as disabled.
+
+```bash
+pip install -r requirements.txt
+cd frontend && npm ci && npm run build && cd ..
+python -m bot.api                  # open http://127.0.0.1:8765  (use --port 8766 if 8765 is taken)
+```
+
+The API listens on 127.0.0.1 only and has no login, so do not expose it to a network. Details:
+[FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md), [FRONTEND_API_CONTRACT.md](FRONTEND_API_CONTRACT.md),
+[FRONTEND_SCORECARD.md](FRONTEND_SCORECARD.md) (scores the interface, not trading readiness).
+
 ## Configuration
 
 Settings come from `.env` (see [.env.example](.env.example)) and environment variables. **Never commit `.env`.**
@@ -213,7 +230,9 @@ More detail in [ARCHITECTURE.md](ARCHITECTURE.md).
 │   ├── state.py           # SQLite state
 │   ├── data.py, feeds.py  # market data download, validation and feeds
 │   ├── notify.py          # Telegram alerts
+│   ├── api/               # read-only dashboard API (python -m bot.api)
 │   └── broker/            # paper, shadow and Delta Exchange brokers
+├── frontend/              # AI Trade Labs dashboard (React + TypeScript, Vite)
 ├── tests/                 # 57 tests, including one per safety rule
 ├── deploy/                # VPS setup and bundle scripts
 ├── Dockerfile
@@ -259,6 +278,7 @@ See [LIVE_TRADING_READINESS.md](LIVE_TRADING_READINESS.md) for the full checklis
 | Risk and operations | [RISK_MANAGEMENT.md](RISK_MANAGEMENT.md), [DEPLOYMENT.md](DEPLOYMENT.md), [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md), [SECURITY.md](SECURITY.md) |
 | India specifics | [COMPLIANCE.md](COMPLIANCE.md), [TAX_REPORTING.md](TAX_REPORTING.md), [COST_ANALYSIS.md](COST_ANALYSIS.md) |
 | Planning | [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md), [MASTER_CHECKLIST.md](MASTER_CHECKLIST.md), [CHANGELOG.md](CHANGELOG.md) |
+| Dashboard | [FRONTEND_AUDIT.md](FRONTEND_AUDIT.md), [FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md), [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md), [FRONTEND_API_CONTRACT.md](FRONTEND_API_CONTRACT.md), [FRONTEND_QA_REPORT.md](FRONTEND_QA_REPORT.md), [FRONTEND_SCORECARD.md](FRONTEND_SCORECARD.md) |
 
 ## License
 

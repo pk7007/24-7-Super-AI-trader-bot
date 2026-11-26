@@ -5,3 +5,7 @@ lightgbm>=4.3
 scikit-learn>=1.4
 joblib>=1.3
 pytest>=8.0
+# observational API + frontend server (python -m bot.api); httpx is used by its tests
+fastapi>=0.165,<1
+uvicorn>=0.54,<1
+httpx>=0.28
