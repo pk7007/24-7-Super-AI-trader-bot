@@ -22,3 +22,7 @@ trades_ledger.csv
 
 # Build output
 deploy/bundle.tar.gz
+
+# Frontend (install with npm ci; dist/ is built locally and served by `python -m bot.api`)
+frontend/node_modules/
+frontend/dist/

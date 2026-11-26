@@ -1,0 +1,138 @@
+/* AI Trade Labs design tokens. Every colour, size and duration in the app comes from here.
+   Semantic names only: components never use raw hex values. See DESIGN_SYSTEM.md. */
+
+:root {
+  /* typography */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --fs-wordmark: 18px;
+  --fs-title: 20px;
+  --fs-section: 14px;
+  --fs-nav: 13px;
+  --fs-body: 13px;
+  --fs-table: 12.5px;
+  --fs-metric-lg: 26px;
+  --fs-metric: 16px;
+  --fs-button: 12.5px;
+  --fs-meta: 11.5px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  /* spacing scale: 4 8 12 16 20 24 32 40 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+
+  /* sizes */
+  --h-button: 32px;
+  --h-button-lg: 40px;
+  --h-input: 32px;
+  --h-row: 32px;
+  --h-topbar: 48px;
+  --w-sidebar: 208px;
+  --w-sidebar-collapsed: 52px;
+  --icon: 16px;
+
+  /* radius, borders */
+  --radius-sm: 4px;
+  --radius: 6px;
+  --border-width: 1px;
+
+  /* motion */
+  --dur-fast: 100ms;
+  --dur: 160ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* z-index */
+  --z-sticky: 10;
+  --z-sidebar: 20;
+  --z-overlay: 40;
+  --z-tooltip: 50;
+}
+
+/* Dark terminal (default). Muted text raised from the brief's #788392 to #8A95A3 so it passes WCAG AA
+   (4.5:1) on every panel colour; see DESIGN_SYSTEM.md for the measured ratios. */
+:root,
+[data-theme="dark"] {
+  --c-bg: #090b0e;
+  --c-sidebar: #0d1014;
+  --c-panel: #11151a;
+  --c-elevated: #171c23;
+  --c-input: #14181f;
+  --c-hover: #1d242d;
+  --c-border: #262d36;
+  --c-border-strong: #647080; /* control boundaries: >= 3:1 on every surface (WCAG 1.4.11) */
+  --c-text: #e6edf3;
+  --c-text-2: #9ca6b5;
+  --c-text-3: #8a95a3;
+  --c-accent: #2a67e6; /* white text on it: 5.0:1 */
+  --c-accent-text: #6ea2f8;
+  --c-on-accent: #ffffff;
+  --c-bull: #26a69a;
+  --c-bull-text: #3cc2b4;
+  --c-bear: #ef5350;
+  --c-bear-text: #f6736f;
+  --c-warn: #eab308;
+  --c-warn-text: #f0c53c;
+  --c-info: #38bdf8;
+  --c-bull-bg: rgba(38, 166, 154, 0.12);
+  --c-bear-bg: rgba(239, 83, 80, 0.12);
+  --c-warn-bg: rgba(234, 179, 8, 0.12);
+  --c-info-bg: rgba(56, 189, 248, 0.1);
+  --c-accent-bg: rgba(59, 130, 246, 0.14);
+  --c-neutral-bg: rgba(156, 166, 181, 0.1);
+  --c-focus: #6ea2f8;
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
+  /* chart */
+  --chart-grid: #1a2028;
+  --chart-text: #9ca6b5;
+  --chart-line: #3b82f6;
+}
+
+[data-theme="light"] {
+  --c-bg: #f5f7fa;
+  --c-sidebar: #eef1f5;
+  --c-panel: #ffffff;
+  --c-elevated: #ffffff;
+  --c-input: #ffffff;
+  --c-hover: #e9edf2;
+  --c-border: #d7dde5;
+  --c-border-strong: #7b8593; /* >= 3:1 on panel, bg and sidebar */
+  --c-text: #0f1720;
+  --c-text-2: #3d4855;
+  --c-text-3: #556170;
+  --c-accent: #2563eb;
+  --c-accent-text: #1d4ed8;
+  --c-on-accent: #ffffff;
+  --c-bull: #0f8a7e;
+  --c-bull-text: #0b7166;
+  --c-bear: #d32f2f;
+  --c-bear-text: #b42323;
+  --c-warn: #a16207;
+  --c-warn-text: #854d0e;
+  --c-info: #0369a1;
+  --c-bull-bg: rgba(15, 138, 126, 0.1);
+  --c-bear-bg: rgba(211, 47, 47, 0.08);
+  --c-warn-bg: rgba(161, 98, 7, 0.1);
+  --c-info-bg: rgba(3, 105, 161, 0.08);
+  --c-accent-bg: rgba(37, 99, 235, 0.1);
+  --c-neutral-bg: rgba(61, 72, 85, 0.08);
+  --c-focus: #2563eb;
+  --shadow-pop: 0 8px 24px rgba(15, 23, 32, 0.12);
+  --chart-grid: #edf0f4;
+  --chart-text: #3d4855;
+  --chart-line: #2563eb;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+  }
+}

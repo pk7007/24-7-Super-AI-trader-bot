@@ -9,16 +9,18 @@
 **Gates before live** (master prompt gates 9-12): 30-90 days real-time paper trading, shadow trading, testnet checklist (`testnet-check`) passing, manual authorization, small capital. None are complete.
 
 
-## Windows scheduled tasks (set up 2026-11-24; later found removed, and left removed by the user's choice - kept here for re-creation)
-| Task | Runs | Trigger | On failure | Time limit |
-|---|---|---|---|---|
-| `IndiaCryptoBot-paper` | `conhost --headless cmd /c run_bot.cmd paper` | at your logon | restart every 1 min, up to 999 times | none |
-| `IndiaCryptoBot-shadow` | `conhost --headless cmd /c run_bot.cmd shadow` | at your logon | same | none |
+## Windows scheduled tasks (re-created 2026-11-25, active)
+| Task | Runs | Trigger | Time limit |
+|---|---|---|---|
+| `IndiaCryptoBot-paper` | `wscript.exe deploy\start_bot_hidden.vbs paper` | at your logon, and every 10 minutes | none |
+| `IndiaCryptoBot-shadow` | `wscript.exe deploy\start_bot_hidden.vbs shadow` | same | none |
 
-* `run_bot.cmd` only accepts `paper` or `shadow`; live cannot be started from it.
+* `start_bot_hidden.vbs` starts `run_bot.cmd <mode>` with no window, and exits quietly if that bot is already running. So the 10-minute check only restarts a bot that has died, and it fills no logs.
+* `run_bot.cmd` and the launcher accept only `paper` or `shadow`; live cannot be started from either.
 * A lock file (`state/<mode>/bot.lock`) makes a second copy refuse to start, so a manual start cannot double-trade one account.
-* Limits: tasks run only while you are logged in (running before login needs administrator rights, which were not used) and only while the PC is awake. Sleep pauses the bots; set Windows sleep to "Never" on mains power if you want unbroken forward-testing.
-* Stop: `Stop-ScheduledTask -TaskName IndiaCryptoBot-paper` (and `-shadow`). Remove: `Unregister-ScheduledTask -TaskName IndiaCryptoBot-paper -Confirm:$false`.
+* Bots started by the tasks are not children of the desktop app session that started them, so an app restart no longer kills them (that stopped both bots at about 06:05 on 2026-11-25).
+* Limits: the tasks run only while you are logged in (running before login needs administrator rights, which were not used) and only while the PC is awake. **Sleep pauses the bots**: on 2026-11-25 the lid or power button put the PC to sleep from 07:17 to 17:12 and about 40 candles were missed. For unbroken forward-testing, set "When I close the lid" and "Sleep" to "Do nothing"/"Never" on mains power, or use the cloud server below.
+* Stop: `Stop-ScheduledTask -TaskName IndiaCryptoBot-paper` (and `-shadow`) stops the launcher only; to stop a running bot, end its `python ... bot.main paper` process. Disable restarts: `Disable-ScheduledTask -TaskName IndiaCryptoBot-paper`. Remove: `Unregister-ScheduledTask -TaskName IndiaCryptoBot-paper -Confirm:$false`.
 
 
 ## 24/7 on a cloud server (prepared 2026-11-24, not yet deployed)

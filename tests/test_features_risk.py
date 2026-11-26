@@ -40,11 +40,28 @@ def test_labels_unresolved_tail_is_nan():
     assert set(y.dropna().unique()) <= {0.0, 1.0, 2.0}
 
 
-def test_position_size_risks_exactly_risk_per_trade():
+def test_position_size_risks_exactly_risk_per_trade_including_costs():
+    from bot.risk import round_trip_cost_pct
     equity, price, atr = 1000.0, 60000.0, 0.004
     units = position_units(equity, price, atr, CFG)
-    loss_at_stop = units * price * CFG.stop_atr * atr
+    loss_at_stop = units * price * (CFG.stop_atr * atr + round_trip_cost_pct(CFG))  # stop move + fees + slippage
     assert loss_at_stop == pytest.approx(equity * CFG.risk_per_trade)
+
+
+@pytest.mark.parametrize("atr", [0.005, 0.01, 0.03, 0.08])
+def test_bot_sized_orders_pass_the_risk_check(atr):
+    """The skill and the bot must agree: an order the bot sizes itself is never BLOCKed on risk."""
+    from dataclasses import replace
+
+    from bot.riskcheck import Context, Order, evaluate
+    cfg = replace(Settings(), market="spot", allow_short=False, max_leverage=1.0, min_order_inr=100.0,
+                  taker_fee=0.001, maker_fee=0.001, slippage=0.0005, stop_slippage=0.001)
+    eq, px = 113.6, 95_000.0
+    q = position_units(eq, px, atr, cfg)
+    v = evaluate(Order("BTC", "buy", q, px, stop_price(1, px, atr, cfg)),
+                 Context(eq, {}, {"daily": False, "weekly": False, "monthly": False}), cfg)
+    assert v.decision == "PASS", v.reasons
+    assert v.numbers["risk_pct_equity"] <= cfg.risk_per_trade * 100 + 1e-6
 
 
 def test_leverage_cap_and_bad_inputs():

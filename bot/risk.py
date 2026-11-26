@@ -16,13 +16,18 @@ def tp_price(side: int, entry: float, atr_pct: float, cfg: Settings) -> float:
     return entry * (1 + side * cfg.tp_atr * atr_pct)
 
 
+def round_trip_cost_pct(cfg: Settings) -> float:
+    """Fees on both legs (incl. GST) plus entry slippage and stop slippage, as a fraction of notional."""
+    return 2 * cfg.taker_fee * cfg.gst + cfg.slippage + cfg.stop_slippage
+
+
 def position_units(equity: float, price: float, atr_pct: float, cfg: Settings) -> float:
-    """Base-asset units so that hitting the stop loses ``risk_per_trade`` of equity,
-    capped by ``max_leverage``."""
+    """Base-asset units so that hitting the stop loses at most ``risk_per_trade`` of equity
+    INCLUDING fees and slippage (a stop-out pays both legs), capped by ``max_leverage``."""
     if equity <= 0 or price <= 0 or not atr_pct or atr_pct != atr_pct or atr_pct <= 0:
         return 0.0
     stop_dist = cfg.stop_atr * atr_pct
-    notional = equity * cfg.risk_per_trade / stop_dist
+    notional = equity * cfg.risk_per_trade / (stop_dist + round_trip_cost_pct(cfg))
     notional = min(notional, equity * cfg.max_leverage)
     return notional / price
 

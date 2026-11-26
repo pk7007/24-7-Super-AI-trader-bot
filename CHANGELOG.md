@@ -1,5 +1,30 @@
 # Changelog (no Git commits exist yet; this is the manual history)
 
+## 2026-11-26 (AI Trade Labs dashboard)
+* Added `bot/api/` (FastAPI, `python -m bot.api`): read-only, GET-only, 127.0.0.1, 15 endpoints over the bots' own files; schema-versioned envelope, `null` for missing data, CSP and security headers, safe errors. 21 tests, including "never writes bot state" and "no secret values in responses".
+* Added `frontend/` (React 19 + TypeScript strict, Vite, TanStack Query, lightweight-charts): 15 pages from real data only (no order entry, no settings that reach the bots), dark/light themes, responsive to 390 px. 23 unit tests. Agent Monitor and Execution Monitor omitted: no data exists for them.
+* FINDINGS: both bots logged 56 of 96 candles in 24 h with 10 step failures (PC sleep, restarts, Binance network errors); the first API draft overstated three protections as live-verified (replaced by an honest `verified_by`, tested); two colour tokens failed WCAG contrast (fixed).
+* Reports: FRONTEND_AUDIT, FRONTEND_ARCHITECTURE, DESIGN_SYSTEM, FRONTEND_API_CONTRACT, FRONTEND_QA_REPORT, FRONTEND_SCORECARD (interface 7.8/10; trading readiness unchanged at 43/100). `requirements.txt` gains fastapi, uvicorn, httpx; `.gitignore` gains `frontend/node_modules`, `frontend/dist`. 191 Python tests pass.
+
+## 2026-11-25 (crypto-budget skill)
+* Added `bot/budget.py` + a local (uncommitted) skill file for `crypto-budget`: the bot's own size for a coin and stop (or `--bot`: live ticker + the ensemble's ATR stop), each limit's maximum and which one decided, USD and INR, capital needed for the Rs 100 minimum, and the chained `crypto-risk` verdict. `--write` saves `proposals/<mode>_order.json` only on PASS. 30 tests.
+* FIX in `crypto-risk`: position size from state.db is in engine units (lot steps), now converted to coins (`coin_units`); new `total_exposure` check (this order + open positions <= 1x equity on spot); equity = cash + open positions at their stops (conservative).
+* FINDING: with 2-ATR stops 9-12% away, a 0.5% risk budget buys $4-6 per trade (about 4-5% of a $113.60 account). Not changed; it is the strategy's design and the main reason returns are small. 167 tests pass.
+
+## 2026-11-25 (bots made durable)
+* Re-created scheduled tasks `IndiaCryptoBot-paper` / `-shadow` (user's go-ahead): at logon + every 10 min, via new `deploy/start_bot_hidden.vbs` (hidden window; skips if that bot is already running). Bots handed over to the tasks at 21:52 and both reconciled; neither is now a child of the app.
+* Found: both bots missed 07:15-17:12 because the PC slept (Kernel-Power 42 "Button or Lid" at 07:17, resumed 17:12). The tasks do not prevent sleep; see DEPLOYMENT.md.
+
+## 2026-11-25 (sizing counts costs)
+* FIX: `bot/risk.position_units` now sizes so a full stop-out loses at most `risk_per_trade` INCLUDING round-trip fees, GST and slippage (was stop distance only: ~0.53% real loss vs the 0.5% policy). Used by the engine and the backtest; `feasibility` uses the same formula. `round_trip_cost_pct` moved to `bot/risk.py` and is shared with `bot/riskcheck.py`, so the bot and the check cannot disagree. New test: bot-sized orders PASS the risk check at 0.5-8% ATR. 137 tests pass.
+* Re-ran base + fee stress + holdout (holdout as a labelled second look). Base: +21.8%, DD -4.7%, PF 2.50, 83 trades (was +22.5% / -4.9% / 2.44 / 85). All runs pass the gate. Details and old/new table in `BACKTEST_REPORT.md`; pre-fix files in `reports/pre_cost_sizing/`. Readiness unchanged at 43/100.
+* Bots found STOPPED at 06:25 IST: last candle 06:00, the 06:15 candle missed, no exit line from the launcher (killed from outside, most likely when the app session that started them restarted). Restarted 06:27 with the new sizing and the feed-review fixes; both reconciled, in cash. Bots started from an app session are not durable: a scheduled task or the 24/7 server is the fix.
+
+## 2026-11-25 (crypto-risk skill)
+* Added `bot/riskcheck.py` + a local (uncommitted) skill file for `crypto-risk`: read-only PASS/BLOCK verdict for a proposed order (exit 0 PASS / 20 BLOCK) against the policy the bot enforces, plus "max size and which limit decided it". Fails closed on missing/corrupt state, garbled kill-switch values, bad settings, or an `--equity` what-if above real equity. 44 tests in `tests/test_riskcheck.py`.
+* Review (`ecc:silent-failure-hunter`): first pass found P1 holes (an exit with no size passed; a garbled kill-switch value read as clear; `--equity` could raise limits; `BTC/INR` matched BTC; a settings error crashed instead of blocking). All fixed with tests; re-review "open P0/P1: NO".
+* FINDING (not changed, user decision): the engine sizes from stop distance only, so a full stop-out of a bot-sized trade loses ~0.53% of equity once fees + slippage are counted, above the 0.5% policy. The risk check counts costs, so it BLOCKs such an order. Fixing the engine changes every backtest.
+
 ## 2026-11-24 (master-prompt pass)
 * Added spot long-only 1x profile as the **default** (`MARKET=spot`); perps opt-in.
 * Added minimum-order refusal, spot lot steps, TDS/notional metrics, `feasibility` command.
@@ -53,6 +78,18 @@
 
 ## 2026-11-24 (skills master prompt)
 * Added a skills master prompt (kept local, not in this repo): maps the 11 skills of the reference pack (github.com/Jakeschincariol/day-trader-skill, MIT, cloned at `C:\tb\refs\ref`) to 10 crypto skills (build: scanner, time machine, alerts, news read-only, ticket; wrap: risk, budget, exit, signal, report; skip: analyst, Pelosi tracker), a 10-point evidence rubric, author's baseline ratings (0-6, none at 9), and a build-review-rerate loop. Not yet run.
+
+## 2026-11-25 (crypto-alerts skill)
+* First skill from [SKILLS_MASTER_PROMPT.md](SKILLS_MASTER_PROMPT.md): `crypto-alerts` (`bot/alerts.py`, a local (uncommitted) skill file for `crypto-alerts`, 23 tests). Read-only; rings once per event on heartbeat loss, step failures, no-data candles, kill-switch, fills, price levels and near-stop; every failed check alerts instead of going silent. `bot/notify.py` `send` now returns delivery success (failed Telegram sends are retried).
+* Independent review (`ecc:silent-failure-hunter`): 2 P0 + 4 P1 silent paths found and fixed; re-review: no open P0/P1. Score 8 of 9 applicable points (chain test open). See [SKILLS_AUDIT.md](SKILLS_AUDIT.md). 80 tests pass.
+* The live drill found both bots failing 3 candles in a row (Binance `SSLEOFError`, no retry). Retry fix proposed, not applied.
+
+## 2026-11-25 (data feed retry)
+* Cause of the lost candles: intermittent `SSLEOFError` connecting to api.binance.com, with no retry, so one dropped connection lost the whole candle (4 in a row on 2026-11-24, 23:15 to 00:00).
+* Fix: `bot/data.py` `ResilientExchange` wraps the Binance client (candles, prices, stop checks, history): network errors are retried up to 4 times with 2/5/10 s back-off, rotating api.binance.com -> data-api.binance.vision -> api-gcp.binance.com and keeping the host that works; real errors are not retried; rate limits (418/429) are not retried; each retry is logged; after the last attempt the error is raised so the bot still fails safe and the alert fires. Only the public URL is redirected; markets limited to spot.
+* Verified: 8 new tests; live test rotated from a dead host to a working one; both bots restarted 00:32-00:36 and the 00:45 candle succeeded in both (decisions made again).
+* Review (`ecc:silent-failure-hunter`): no P0/P1. Applied: rate-limit no-retry, public-only URL, copy/unpickle recursion guard. Open (P2): a lagging mirror or a >500-minute stop window could make a paper stop check pass over unseen candles; no overall time budget per step (worst case about 97 s per call during an outage); candle gaps inside a window are not detected.
+* The three review fixes were made after the restart, so the running bots use the earlier version until their next restart (difference only matters during a rate-limit ban).
 
 ## Earlier
 * Strategy lab + Monte Carlo + promotion gate; ensemble model; venue-price guard; ledger PnL fix; testnet checklist; trend strategy replaced a model with no edge; Binance replaced corrupt Delta candles; core engine with the six rules (reconcile, exchange stops, kill-switch, ledger, secrets).

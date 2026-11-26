@@ -58,3 +58,17 @@ Protocol and pass criteria were written first in [HOLDOUT_PROTOCOL.md](HOLDOUT_P
 | Resampled chance of a loss | 10% | |
 
 **Verdict: passed the pre-declared minimum criteria (lab gate, DD <= 8%, >= 30 trades), but this is weak evidence:** 40 trades, resampled chance of a loss 10% (5th-percentile outcome about -1.2%), exactly 3 of 4 sub-periods profitable (the minimum), and about 2.8% a year before 30% tax and 1% TDS, which is below Indian risk-free rates. Sitting in cash through a bear market is what a long-only trend filter is designed to do, so the crash result was largely expected. Independently checked by `quant-validator` (numbers reproduced from the JSON). The JSON did not record risk per trade, positions or loss limits at the time; `run_lab` now writes an `effective_config` block. What it shows: the strategy protected capital through a crash where BTC lost about 61%, and stayed slightly positive. What it does not show: strong returns. About +5% over roughly 1.8 years is about 3% a year before tax, and 40 trades is a small sample. File: `reports/holdout_2021_2022.json`.
+
+## Re-run after cost-inclusive sizing (2026-11-25)
+The bot sized each trade from the stop distance alone, so a full stop-out lost about 0.53% of equity once round-trip fees, GST and slippage were counted, above the 0.5% policy. Found by the new `crypto-risk` check. `position_units` now divides the risk budget by (stop distance + round-trip cost), so a stop-out loses at most 0.5% including costs. Trades are slightly smaller. Same data, same settings otherwise; the tables above are the pre-fix numbers (files kept in `reports/pre_cost_sizing/`).
+
+| Run | Before: return / DD / PF / trades | After: return / DD / PF / trades | Gate after |
+|---|---|---|---|
+| 0.10% fee (base) | +22.5% / -4.9% / 2.44 / 85 | **+21.8% / -4.7% / 2.50 / 83** | pass |
+| 0.15% fee | +21.8% / -5.0% / 2.36 / 85 | +21.1% / -4.8% / 2.42 / 83 | pass |
+| 0.20% fee | +21.0% / -5.2% / 2.27 / 85 | +22.0% / -4.6% / 2.50 / 81 | pass |
+| 0.30% fee | +19.5% / -5.6% / 2.11 / 85 | +19.5% / -4.5% / 2.37 / 80 | pass |
+| 0.50% fee | +16.8% / -6.0% / 1.86 / 85 | +15.9% / -4.7% / 2.10 / 75 | pass |
+| Holdout 2021-22 (**second look**, labelled re-run) | +5.3% / -5.5% / 1.87 / 40 | +5.1% / -5.5% / 1.84 / 40 | pass (same criteria) |
+
+Smaller trades fall below the Rs 100 minimum order more often at high fees, so fewer trades happen; that path change is why the 0.20% row came out slightly above the base. Treat differences under about 1 point of return as noise. The holdout was meant to be used once; this re-run is a second look after a mechanical correction (no parameter was tuned), so it is not new out-of-sample evidence. The original one-shot result stays in `reports/holdout_2021_2022.json`; the re-run is `reports/holdout_2021_2022_rerun_costsizing.json`.

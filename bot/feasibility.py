@@ -13,6 +13,7 @@ import pandas as pd
 
 from .config import ROOT, Settings
 from .features import atr
+from .risk import round_trip_cost_pct
 
 CAPITALS_INR = [1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 500_000]
 
@@ -33,7 +34,7 @@ def daily_atr_pct(df: pd.DataFrame) -> float:
 
 
 def row(capital: float, stop_dist: float, cfg: Settings, a: Assumptions) -> dict:
-    notional = capital * a.risk_per_trade / stop_dist
+    notional = capital * a.risk_per_trade / (stop_dist + round_trip_cost_pct(cfg))  # same as the bot's sizing
     notional = min(notional, capital * cfg.max_leverage / a.max_open_positions)  # no leverage, 3 slots
     round_trip_cost = 2 * (cfg.taker_fee * cfg.gst + cfg.slippage)
     feasible = notional >= a.min_order_inr
