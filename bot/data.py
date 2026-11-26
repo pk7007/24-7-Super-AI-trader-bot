@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
@@ -11,6 +12,60 @@ import pandas as pd
 from .config import Settings
 
 COLUMNS = ["open", "high", "low", "close", "volume"]
+log = logging.getLogger("data")
+
+# Binance public market-data hosts, tried in order. data-api.binance.vision serves market data only.
+BINANCE_HOSTS = ("https://api.binance.com", "https://data-api.binance.vision", "https://api-gcp.binance.com")
+
+
+class ResilientExchange:
+    """Wraps a public ccxt Binance client. A network error (dropped TLS connection, timeout, 5xx,
+    rate limit) is retried with back-off on the next host; the host that works is kept. Real errors
+    (bad symbol, bad request) are raised at once. After ``attempts`` failures the error is raised, so
+    the caller fails safe exactly as before (no data -> no trade) and the alert still fires."""
+
+    def __init__(self, ex, hosts: tuple[str, ...] = BINANCE_HOSTS, attempts: int = 4,
+                 backoff: tuple[float, ...] = (2, 5, 10), sleep=time.sleep):
+        self.ex, self.hosts, self.attempts, self.backoff, self.sleep = ex, hosts, attempts, backoff, sleep
+        self.host_i = 0
+        self._set_host()
+
+    def _set_host(self) -> None:
+        # public endpoints only; signed calls (never used here) are not redirected to a data-only mirror
+        self.ex.urls["api"]["public"] = self.hosts[self.host_i % len(self.hosts)] + "/api/v3"
+
+    def _call(self, name: str, *a, **k):
+        for i in range(self.attempts):
+            try:
+                return getattr(self.ex, name)(*a, **k)
+            except (ccxt.DDoSProtection, ccxt.RateLimitExceeded) as e:  # 418/429 ban: other hosts share the limit
+                log.error("%s: rate limited (%s); not retrying, to avoid extending a ban", name, type(e).__name__)
+                raise
+            except ccxt.NetworkError as e:
+                if i == self.attempts - 1:
+                    log.error("%s failed after %d attempts on all hosts: %s", name, self.attempts, type(e).__name__)
+                    raise
+                old = self.hosts[self.host_i % len(self.hosts)]
+                self.host_i += 1
+                self._set_host()
+                wait = self.backoff[min(i, len(self.backoff) - 1)]
+                log.warning("%s: %s on %s; retry %d/%d on %s in %ss", name, type(e).__name__, old, i + 1,
+                            self.attempts - 1, self.hosts[self.host_i % len(self.hosts)], wait)
+                self.sleep(wait)
+
+    def fetch_ohlcv(self, *a, **k):
+        return self._call("fetch_ohlcv", *a, **k)
+
+    def fetch_ticker(self, *a, **k):
+        return self._call("fetch_ticker", *a, **k)
+
+    def load_markets(self, *a, **k):
+        return self._call("load_markets", *a, **k)
+
+    def __getattr__(self, name):  # everything else (parse_timeframe, options, id...) passes through
+        if name == "ex" or name.startswith("__"):  # avoid recursion during copy/unpickle
+            raise AttributeError(name)
+        return getattr(self.ex, name)
 
 
 def make_public_exchange(cfg: Settings) -> ccxt.delta:
@@ -19,8 +74,10 @@ def make_public_exchange(cfg: Settings) -> ccxt.delta:
     return ex
 
 
-def make_reference_exchange() -> ccxt.binance:
-    return ccxt.binance({"timeout": 20000, "enableRateLimit": True})
+def make_reference_exchange() -> ResilientExchange:
+    ex = ccxt.binance({"timeout": 20000, "enableRateLimit": True})
+    ex.options["fetchMarkets"] = {**ex.options.get("fetchMarkets", {}), "types": ["spot"]}  # signals use spot only
+    return ResilientExchange(ex)
 
 
 def source_exchange(cfg: Settings):
