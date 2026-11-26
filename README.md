@@ -131,6 +131,9 @@ All commands run as `python -m bot.main <command>`.
 | `paper` | 24/7 paper trading on live prices. No real orders. |
 | `shadow` | Live data and production risk checks; logs order intentions without sending them. |
 | `report --mode paper` | Summarise the ledger for a mode. |
+| `python -m bot.backup [--drill]` | Back up every bot's state (safe while running); `--drill` also restores and compares. |
+| `python -m bot.experiments` | Log a champion-challenger decision from the latest lab reports (never changes the strategy). |
+| `python -m bot.readiness` | Re-score live-trading readiness from evidence (runs the tests). |
 | `train --days N` | Fit the optional LightGBM model (only used with `STRATEGY=ml`). |
 | `testnet-check` | Step-by-step verification of the Delta broker on testnet. |
 | `live` | Real orders on Delta Exchange. Locked behind explicit consent; see below. |

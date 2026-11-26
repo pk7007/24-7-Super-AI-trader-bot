@@ -1,5 +1,14 @@
 # Changelog (no Git commits exist yet; this is the manual history)
 
+## 2026-11-26 (audit code fixes: audit 5.2 -> 5.6, readiness 43 -> 50)
+* Risk: `bot/portfolio_risk.py` blocks an entry when the portfolio's 1-day 97.5% historical expected shortfall (joint daily returns, so correlation counts) would exceed `max_es_pct` (2%, new policy ceiling, env can only tighten), or when gross exposure would exceed `max_leverage` x equity. Fail-closed on missing history (replay only warns). Uses closed daily candles only (`Feed.daily_closes`). On live data the cap does not bind at current sizing (worst pair 0.77% of equity); coin correlations are 0.85-0.90.
+* Backtesting: `bot/stats.py` deflated Sharpe ratio (Bailey & Lopez de Prado; matches the paper's worked example). The lab adds it to every report, counting every setting in every lab report as a trial. FINDING: ensemble DSR 0.000 over 97 trials, 0.780 within the trend family; bar 0.95. Lab reruns reproduced the ensemble exactly (+21.8%/PF 2.5; +15.9%/PF 2.1 at 0.50% fees).
+* AI/ML: `bot/experiments.py` champion-challenger log (`reports/experiments.md`): a challenger is only proposed if it passes the gate and beats the champion at 0.10% and 0.50% fees and has its own holdout; switching needs 30 days in shadow and the user's approval. First run: all 4 challengers rejected.
+* Infrastructure: `bot/backup.py` (consistent SQLite online backup while bots run, SHA-256 manifest, integrity check, restore only into an empty folder, rotation; never `.env`); `--drill` passed on real state. `backups/` gitignored.
+* Monitoring: `bot/heartbeat.py` optional outside heartbeat (`HEARTBEAT_URL`, https only, URL never logged or stored), pinged after each processed candle. Not configured yet.
+* Security: `pip-audit` installed in the venv; no known vulnerabilities in `requirements.txt` or the venv.
+* Readiness scorer: the ES/exposure, deflated-Sharpe, champion-challenger, backup and heartbeat items now pass only on real evidence (named tests plus a current result), not on a file existing. 230 tests pass. Bots restarted to load the code (no positions, state kept).
+
 ## 2026-11-26 (uptime fix)
 * FINDING (full audit, AUDIT_REPORT.md 5.2/10): the bots processed only about 70% of candles. Log gaps showed about 90% of the loss was Windows idle sleep (silent stretches of 10 h and 7 h); the rest were network failures, where a failed candle was dropped until the next one.
 * Added `bot/keepawake.py`: while a bot runs it asks Windows not to idle-sleep (`SetThreadExecutionState`, system only, the screen may still turn off). It ends with the process, closing the lid still sleeps the PC, `KEEP_AWAKE=0` turns it off, and it does nothing on Linux.
