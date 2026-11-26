@@ -1,5 +1,10 @@
 # Changelog (no Git commits exist yet; this is the manual history)
 
+## 2026-11-27 (testnet verification recorded)
+* `testnet-check` passed all 11 steps on the Delta India testnet (market entry, exchange-side stop resting, cancel, reconcile re-places a missing stop, orphan position flattened, fills). Test account left flat.
+* `bot/testnet_check.py` now saves every run, pass or fail, to `reports/testnet_check.json` (steps, evidence, endpoint, time; never keys or error text). `bot/readiness.py` credits "testnet order test" only for a full passing run against the testnet address in the last 30 days. 3 tests; 233 pass.
+* Readiness 50 -> 53/100 (DEVELOPMENT ONLY); audit 5.6 -> 5.7/10 (execution 3 -> 4). Futures only: the spot execution blocker stands.
+
 ## 2026-11-26 (audit code fixes: audit 5.2 -> 5.6, readiness 43 -> 50)
 * Risk: `bot/portfolio_risk.py` blocks an entry when the portfolio's 1-day 97.5% historical expected shortfall (joint daily returns, so correlation counts) would exceed `max_es_pct` (2%, new policy ceiling, env can only tighten), or when gross exposure would exceed `max_leverage` x equity. Fail-closed on missing history (replay only warns). Uses closed daily candles only (`Feed.daily_closes`). On live data the cap does not bind at current sizing (worst pair 0.77% of equity); coin correlations are 0.85-0.90.
 * Backtesting: `bot/stats.py` deflated Sharpe ratio (Bailey & Lopez de Prado; matches the paper's worked example). The lab adds it to every report, counting every setting in every lab report as a trial. FINDING: ensemble DSR 0.000 over 97 trials, 0.780 within the trend family; bar 0.95. Lab reruns reproduced the ensemble exactly (+21.8%/PF 2.5; +15.9%/PF 2.1 at 0.50% fees).
