@@ -1,5 +1,11 @@
 # Changelog (no Git commits exist yet; this is the manual history)
 
+## 2026-11-26 (uptime fix)
+* FINDING (full audit, AUDIT_REPORT.md 5.2/10): the bots processed only about 70% of candles. Log gaps showed about 90% of the loss was Windows idle sleep (silent stretches of 10 h and 7 h); the rest were network failures, where a failed candle was dropped until the next one.
+* Added `bot/keepawake.py`: while a bot runs it asks Windows not to idle-sleep (`SetThreadExecutionState`, system only, the screen may still turn off). It ends with the process, closing the lid still sleeps the PC, `KEEP_AWAKE=0` turns it off, and it does nothing on Linux.
+* `bot/main.py`: a failed candle step is now retried on the same candle after 30, 60, 120 and 240 s, stopping 60 s before the next candle, with resting stops and the kill-switch still checked while waiting. Retries are safe because a step skips coins already held and re-checks every limit. Attempts log as "step attempt N failed"; only a candle that is really lost logs "step failed after N attempts" and sends one alert, so `bot/alerts.py` and the dashboard keep counting lost candles only.
+* 7 tests in `tests/test_uptime.py`; 198 tests pass. The paper and shadow bots were restarted to load the fix (no positions open, state kept). The new uptime has not been measured yet.
+
 ## 2026-11-26 (AI Trade Labs dashboard)
 * Added `bot/api/` (FastAPI, `python -m bot.api`): read-only, GET-only, 127.0.0.1, 15 endpoints over the bots' own files; schema-versioned envelope, `null` for missing data, CSP and security headers, safe errors. 21 tests, including "never writes bot state" and "no secret values in responses".
 * Added `frontend/` (React 19 + TypeScript strict, Vite, TanStack Query, lightweight-charts): 15 pages from real data only (no order entry, no settings that reach the bots), dark/light themes, responsive to 390 px. 23 unit tests. Agent Monitor and Execution Monitor omitted: no data exists for them.

@@ -179,27 +179,68 @@ def cmd_replay(cfg: Settings, a) -> None:
     print(json.dumps(summary, indent=2, default=str))
 
 
+def _utcnow() -> pd.Timestamp:
+    return pd.Timestamp.now(tz="UTC")
+
+
+STEP_RETRY_DELAYS = (30, 60, 120, 240)  # seconds; a failed candle is retried, never skipped on the first error
+
+
+async def step_with_retry(eng, ts: pd.Timestamp, deadline: pd.Timestamp, delays=STEP_RETRY_DELAYS,
+                          now=_utcnow, sleep=asyncio.sleep, notify=notify.send) -> bool:
+    """Run ``eng.step(ts)``; on failure retry the SAME candle after each delay, stopping before ``deadline``.
+
+    Safe to repeat: step skips coins already held and re-checks every limit, so a retry cannot double-enter.
+    Alerts once, only if every attempt failed. Returns True if the candle was processed.
+    """
+    attempt, exc = 0, None
+    while True:
+        try:
+            await asyncio.to_thread(eng.step, ts)
+            if attempt:
+                log.info("step for candle %s recovered on retry %d", ts.strftime("%m-%d %H:%M"), attempt)
+            return True
+        except Exception as e:  # noqa: BLE001 - any failure is retried, then reported
+            exc = e
+            # Not "step failed ...": alerts and the dashboard count those lines as lost candles.
+            log.warning("step attempt %d failed: %s: %s", attempt + 1, type(e).__name__, e, exc_info=True)
+        if attempt >= len(delays) or now() + pd.Timedelta(seconds=delays[attempt]) > deadline:
+            break
+        await sleep(delays[attempt])
+        attempt += 1
+    msg = (f"step failed after {attempt + 1} attempts, candle {ts.strftime('%m-%d %H:%M')} skipped: "
+           f"{type(exc).__name__}: {exc}")
+    log.error(msg)
+    notify(msg)
+    return False
+
+
 async def run_forever(eng: Engine, cfg: Settings) -> None:
+    from .keepawake import prevent_sleep
+
     tf = pd.Timedelta(minutes=cfg.tf_minutes)
+    prevent_sleep()  # most missed candles were the PC idle-sleeping; KEEP_AWAKE=0 turns this off
     await asyncio.to_thread(eng.reconcile)  # RULE 3: before anything else
     log.info("reconciled; entering main loop (%s)", cfg.mode)
+
+    async def wait(seconds: float) -> None:
+        """Sleep in short slices, evaluating resting stops and the kill-switch between them."""
+        end = _utcnow() + pd.Timedelta(seconds=seconds)
+        while (rem := (end - _utcnow()).total_seconds()) > 0:
+            await asyncio.sleep(min(20, rem))
+            try:
+                await asyncio.to_thread(eng.monitor, _utcnow())
+            except Exception:
+                log.exception("monitor failed")
+
     while True:
-        now = pd.Timestamp.now(tz="UTC")
+        now = _utcnow()
         nxt = now.ceil(f"{cfg.tf_minutes}min")
         if nxt <= now:
             nxt += tf
-        while (rem := (nxt - pd.Timestamp.now(tz="UTC")).total_seconds()) > 0:
-            await asyncio.sleep(min(20, rem))
-            try:
-                await asyncio.to_thread(eng.monitor, pd.Timestamp.now(tz="UTC"))
-            except Exception:
-                log.exception("monitor failed")
+        await wait((nxt - _utcnow()).total_seconds())
         await asyncio.sleep(4)  # let the exchange publish the closed candle
-        try:
-            await asyncio.to_thread(eng.step, nxt)
-        except Exception as exc:
-            log.exception("step failed")
-            notify.send(f"step failed: {type(exc).__name__}: {exc}")
+        await step_with_retry(eng, nxt, deadline=nxt + tf - pd.Timedelta(seconds=60), sleep=wait)
 
 
 def cmd_paper(cfg: Settings, a) -> None:
