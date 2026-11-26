@@ -222,6 +222,8 @@ async def run_forever(eng: Engine, cfg: Settings) -> None:
     prevent_sleep()  # most missed candles were the PC idle-sleeping; KEEP_AWAKE=0 turns this off
     await asyncio.to_thread(eng.reconcile)  # RULE 3: before anything else
     log.info("reconciled; entering main loop (%s)", cfg.mode)
+    # No-op unless HEARTBEAT_URL is set. Pings every 5 min (also during retries); stops after a skipped candle.
+    pacer = heartbeat.Pacer(cfg.run_dir / "heartbeat.json")
 
     async def wait(seconds: float) -> None:
         """Sleep in short slices, evaluating resting stops and the kill-switch between them."""
@@ -232,6 +234,10 @@ async def run_forever(eng: Engine, cfg: Settings) -> None:
                 await asyncio.to_thread(eng.monitor, _utcnow())
             except Exception:
                 log.exception("monitor failed")
+            try:
+                await asyncio.to_thread(pacer.tick)
+            except Exception:  # monitoring must never stop trading
+                log.exception("heartbeat tick failed")
 
     while True:
         now = _utcnow()
@@ -240,8 +246,11 @@ async def run_forever(eng: Engine, cfg: Settings) -> None:
             nxt += tf
         await wait((nxt - _utcnow()).total_seconds())
         await asyncio.sleep(4)  # let the exchange publish the closed candle
-        if await step_with_retry(eng, nxt, deadline=nxt + tf - pd.Timedelta(seconds=60), sleep=wait):
-            await asyncio.to_thread(heartbeat.ping, cfg.run_dir / "heartbeat.json")  # no-op unless HEARTBEAT_URL set
+        ok = await step_with_retry(eng, nxt, deadline=nxt + tf - pd.Timedelta(seconds=60), sleep=wait)
+        try:
+            await asyncio.to_thread(pacer.candle, ok)
+        except Exception:
+            log.exception("heartbeat ping failed")
 
 
 def cmd_paper(cfg: Settings, a) -> None:

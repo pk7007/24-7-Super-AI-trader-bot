@@ -1,9 +1,64 @@
-"""External heartbeat: one GET to the user's monitor after each processed candle; never crashes, never logs the URL."""
+"""External heartbeat: GETs to the user's monitor every 5 minutes while candles succeed; never crashes, never logs the URL."""
 
 import json
 import logging
 
-from bot.heartbeat import ping, recent_ok
+from bot.heartbeat import Pacer, ping, recent_ok
+
+
+class FakeClock:
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self):
+        return self.t
+
+
+def pacer(every_s=300):
+    clock, sent = FakeClock(), []
+    return Pacer("hb.json", every_s=every_s, send=lambda status: sent.append(clock.t), now=clock), clock, sent
+
+
+def test_pacer_pings_every_five_minutes_while_healthy():
+    p, clock, sent = pacer()
+    for _ in range(180):              # one hour of 20-second wait slices, one 15-min candle each quarter hour
+        p.tick()
+        clock.t += 20
+        if clock.t % 900 == 0:
+            p.candle(True)
+    gaps = [b - a for a, b in zip(sent, sent[1:])]
+    assert sent[0] == 0                         # pings as soon as the bot starts
+    assert max(gaps) <= 300 + 20                # never more than 5 min (+ one slice) apart
+    assert min(gaps) > 0 and len(sent) >= 12    # no duplicate pings at the same moment
+
+
+def test_skipped_candle_stops_pings_until_a_candle_succeeds():
+    p, clock, sent = pacer()
+    p.tick()
+    p.candle(False)                   # every retry failed: candle skipped
+    n = len(sent)
+    for _ in range(60):               # 20 minutes of waiting
+        clock.t += 20
+        p.tick()
+    assert len(sent) == n             # silent, so the outside monitor alerts
+    p.candle(True)
+    assert len(sent) == n + 1 and sent[-1] == clock.t   # recovery pings at once
+    clock.t += 300
+    p.tick()
+    assert len(sent) == n + 2         # and the 5-minute rhythm resumes
+
+
+def test_successful_candle_restarts_the_five_minute_timer():
+    p, clock, sent = pacer()
+    p.tick()                          # t=0
+    clock.t = 200
+    p.candle(True)                    # t=200
+    clock.t = 400
+    p.tick()
+    assert sent == [0, 200]           # 400 is only 200 s after the candle ping
+    clock.t = 500
+    p.tick()
+    assert sent == [0, 200, 500]
 
 URL = "https://hc-ping.example/secret-uuid"
 
