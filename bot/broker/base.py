@@ -29,6 +29,14 @@ class ExPosition:
     entry: float
 
 
+def closed_days(candles: pd.DataFrame, now: pd.Timestamp) -> pd.Series:
+    """Daily closes (last intraday close of each UTC day) for days that ended at or before ``now``."""
+    if candles.empty:
+        return pd.Series(dtype=float)
+    daily = candles["close"].resample("1D").last().dropna()
+    return daily[daily.index + pd.Timedelta(days=1) <= now]
+
+
 class Feed(ABC):
     """Market data. Implementations: LiveFeed (public REST) and ReplayFeed (history)."""
 
@@ -41,6 +49,11 @@ class Feed(ABC):
     @abstractmethod
     def range_since(self, symbol: str, since: pd.Timestamp) -> list[tuple[float, float]]:
         """(high, low) pairs of price action since ``since`` in time order."""
+
+    def daily_closes(self, symbol: str, days: int) -> pd.Series:
+        """Closes of the last ``days`` CLOSED UTC days (the forming day is never included). Default: from candles."""
+        df = self.ohlcv_closed(symbol, days * 96 + 96)
+        return closed_days(df, self.now()).tail(days)
 
     @abstractmethod
     def contract_size(self, symbol: str) -> float: ...

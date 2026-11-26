@@ -47,6 +47,8 @@ class Settings:
     daily_loss_limit: float = 0.01    # policy defaults from the user's master prompt (1% / 3% / 5%)
     weekly_loss_limit: float = 0.03
     monthly_loss_limit: float = 0.05
+    max_es_pct: float = 0.02          # portfolio 1-day 97.5% expected shortfall cap (bot/portfolio_risk.py)
+    es_lookback_days: int = 180       # daily history used for that ES
 
     # costs (Delta India: taker 0.05%, maker 0.02%, GST 18% on fees -- verify on your fee tier)
     taker_fee: float = 0.0005
@@ -134,13 +136,14 @@ class Settings:
             daily_loss_limit=float(os.environ.get("DAILY_LOSS_LIMIT", s.daily_loss_limit)),
             weekly_loss_limit=float(os.environ.get("WEEKLY_LOSS_LIMIT", s.weekly_loss_limit)),
             monthly_loss_limit=float(os.environ.get("MONTHLY_LOSS_LIMIT", s.monthly_loss_limit)),
+            max_es_pct=float(os.environ.get("MAX_ES_PCT", s.max_es_pct)),
         ))
 
 
 # Policy ceilings (user's risk policy + SAFETY_RULES.md rule 4). Environment overrides may only make risk
 # STRICTER. Loosening any of these is a human decision made by editing this table, not an env var.
 POLICY_CEILING = {"risk_per_trade": 0.005, "max_positions": 2, "daily_loss_limit": 0.03,
-                  "weekly_loss_limit": 0.03, "monthly_loss_limit": 0.05}
+                  "weekly_loss_limit": 0.03, "monthly_loss_limit": 0.05, "max_es_pct": 0.02}
 
 
 def enforce_policy(s: "Settings") -> "Settings":

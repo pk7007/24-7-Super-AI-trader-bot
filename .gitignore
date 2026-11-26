@@ -15,6 +15,7 @@ data/
 state/
 models/
 reports/
+backups/
 trades_ledger.csv
 *.log
 *.lock

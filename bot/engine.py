@@ -19,6 +19,7 @@ from .config import Settings
 from .features import build_features
 from .ledger import Ledger
 from .model import SignalModel
+from .portfolio_risk import check_entry
 from .risk import DailyKillSwitch, position_units, stop_price, to_contracts
 from .state import Position, State
 from .strategy import decide, should_exit_on_flip
@@ -292,8 +293,21 @@ class Engine:
                 log.info("%s: order Rs %.0f below minimum Rs %.0f -> refused (capital too small for the "
                          "risk budget)", sym, n * cs * price * self.cfg.usdt_inr, self.cfg.min_order_inr)
                 continue
+            if not self._portfolio_ok(sym, side * n * cs * price):
+                continue
             if self._enter(sym, side, n, atr, now):
                 held.add(sym)
+
+    def _portfolio_ok(self, sym: str, value: float) -> bool:
+        """Gross exposure and correlation-aware expected-shortfall caps (bot/portfolio_risk.py). Can only block."""
+        held = {s: p.side * p.contracts * self.feed.contract_size(s) * p.entry
+                for s, p in self.broker.positions().items()}
+        v = check_entry(held, sym, value, self.broker.equity(), self.feed.daily_closes, self.cfg)
+        if not v.ok:
+            log.info("%s: entry refused by portfolio risk: %s", sym, v.reason)
+            return False
+        log.info("%s: portfolio risk ok: %s%s", sym, v.reason, f", correlation with held {v.corr}" if v.corr else "")
+        return True
 
     def _venue_ok(self, sym: str, signal_price: float) -> bool:
         if self.venue_price is None:

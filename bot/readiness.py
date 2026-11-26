@@ -143,6 +143,27 @@ def _defaults_within_policy() -> bool:
         return False
 
 
+def _heartbeat_ok() -> bool:
+    from .heartbeat import recent_ok
+
+    return recent_ok(ROOT / "state" / "paper" / "heartbeat.json", minutes=60)
+
+
+def _recent_drill(days: int = 7) -> bool:
+    try:
+        rep = json.loads((ROOT / "reports" / "backup_drill.json").read_text())
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(rep["drilled_utc"])
+        return rep.get("ok") is True and age.days < days
+    except Exception:
+        return False
+
+
+def _has_decision() -> bool:
+    from .experiments import has_decision
+
+    return has_decision(ROOT / "reports" / "experiments.md")
+
+
 def _git_ignores(path: str) -> bool:
     import subprocess
 
@@ -177,7 +198,8 @@ def score_items(tr: dict | None = None) -> list[tuple[str, float, str, bool]]:
         ("Backtesting and statistical validation", 1, "pre-registered untouched holdout passed (HOLDOUT_PROTOCOL.md)",
          _lab("holdout_2021_2022").get("promote") is True
          and abs(_lab("holdout_2021_2022").get("full", {}).get("max_drawdown_pct", -99)) <= T["max_dd_pct"]),
-        ("Backtesting and statistical validation", 1, "multiple-testing correction (deflated Sharpe or similar)", False),
+        ("Backtesting and statistical validation", 1, "deflated Sharpe >= 0.95 after counting every lab trial",
+         _lab("lab_spot_policy_mp2").get("deflated_sharpe", {}).get("passes_0_95") is True),
         # Risk (20) - behavioural: points only if the named tests PASS in this run
         ("Risk management", 4, "daily/weekly/monthly loss limits enforced (engine + backtest) and env cannot loosen policy",
          _passed(tr, "test_weekly_limit_halts_entries_even_after_daily_rearms", "test_env_overrides_cannot_loosen_policy",
@@ -189,7 +211,10 @@ def score_items(tr: dict | None = None) -> list[tuple[str, float, str, bool]]:
         ("Risk management", 3, "order below exchange minimum is refused, not forced",
          _passed(tr, "test_order_below_minimum_notional_is_refused_not_forced")),
         ("Risk management", 3, "shipped defaults are within policy ceilings", _defaults_within_policy()),
-        ("Risk management", 3, "correlation / exposure caps + VaR", False),
+        ("Risk management", 3, "correlation-aware expected-shortfall cap + gross exposure cap block entries (engine)",
+         _passed(tr, "test_correlated_coins_add_up_independent_coins_diversify", "test_entry_refused_when_portfolio_es_exceeds_cap",
+                 "test_entry_refused_when_gross_exposure_exceeds_leverage_cap", "test_engine_skips_entry_on_es_breach_and_logs_why",
+                 "test_policy_refuses_a_looser_es_cap")),
         # Exchange (15)
         ("Exchange integration and execution", 5, "live spot exchange adapter (bot/broker/spot.py)", (ROOT / "bot" / "broker" / "spot.py").exists()),
         ("Exchange integration and execution", 4, "verified exchange-side spot stop order", False),
@@ -204,7 +229,9 @@ def score_items(tr: dict | None = None) -> list[tuple[str, float, str, bool]]:
          _passed(tr, "test_rule3_missing_exchange_stop_is_replaced_on_restart", "test_single_instance_lock_blocks_second_bot")),
         # AI (5)
         ("AI and ML reliability", 3, "AI shown to beat non-AI baseline after costs", False),
-        ("AI and ML reliability", 2, "champion-challenger pipeline with logged decision", (ROOT / "reports" / "experiments.md").exists()),
+        ("AI and ML reliability", 2, "champion-challenger pipeline with logged decision",
+         _passed(tr, "test_challenger_must_beat_champion_at_both_fee_levels", "test_no_promotion_without_its_own_holdout")
+         and _has_decision()),
         # Security (5)
         ("Security", 2, ".env is ignored by git (git check-ignore)", _git_ignores(".env")),
         ("Security", 3, "verified trade-only, no-withdrawal, IP-bound key", False),
@@ -213,8 +240,11 @@ def score_items(tr: dict | None = None) -> list[tuple[str, float, str, bool]]:
         ("Regulatory and tax compliance", 2, "every fill written to CSV + SQLite with realized PnL",
          _passed(tr, "test_rule5_every_fill_in_csv_and_sqlite", "test_rule5_realized_pnl_computed_when_broker_omits_it")),
         # Monitoring (5)
-        ("Monitoring and recovery", 3, "external heartbeat/alerting", False),
-        ("Monitoring and recovery", 2, "tested backups + recovery drill", False),
+        ("Monitoring and recovery", 3, "external heartbeat delivered in the last hour (HEARTBEAT_URL, paper bot)",
+         _passed(tr, "test_ping_records_success_without_the_url", "test_failure_is_logged_never_raised_and_url_never_logged")
+         and _heartbeat_ok()),
+        ("Monitoring and recovery", 2, "backup + restore drill passed in the last 7 days (python -m bot.backup --drill)",
+         _passed(tr, "test_drill_restores_and_matches_row_counts", "test_verify_detects_a_corrupted_file") and _recent_drill()),
     ]
 
 

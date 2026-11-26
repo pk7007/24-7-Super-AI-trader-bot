@@ -20,6 +20,7 @@ import pandas as pd
 from .backtest import simulate
 from .config import ROOT, Settings
 from .features import atr
+from .stats import count_lab_trials, deflated_sharpe, sharpe_stats
 
 BPD = 96  # 15-minute bars per day
 
@@ -143,6 +144,35 @@ def gate(full_main: dict, windows: list[float], variants: list[float], mc: dict)
     return (not why), why
 
 
+def _deflate(report: dict, trials: dict, reports_dir, tag: str) -> None:
+    """Add a deflated Sharpe ratio to every candidate's main setting (bot/stats.py). The trial count covers every
+    setting in every earlier lab report plus this run and the rejected LightGBM model, so it is conservative."""
+    if not trials:
+        return
+    srs = [sharpe_stats(r)["sr"] for r in trials.values()]
+    var_sr = float(np.var(srs, ddof=1)) if len(srs) > 1 else 0.0
+    n = count_lab_trials(reports_dir, extra=1, skip=tag) + len(trials)
+    for name, c in report["candidates"].items():
+        r = trials.get((name, c["main_param"]))
+        if r is None:
+            continue
+        s = sharpe_stats(r)
+        d = deflated_sharpe(s["sr"], s["t"], s["skew"], s["kurt"], var_sr, n)
+        # Sensitivity: Sharpe variance within the candidate's own family (daily-scale trend rules vs intraday
+        # mean reversion, fixed by design in CANDIDATES). The headline above stays the all-trials number.
+        fam = [sharpe_stats(t)["sr"] for (nm, _), t in trials.items() if CANDIDATES[nm][3] == CANDIDATES[name][3]]
+        df_ = deflated_sharpe(s["sr"], s["t"], s["skew"], s["kurt"], float(np.var(fam, ddof=1)) if len(fam) > 1 else 0.0, n)
+        c["deflated_sharpe"] = {"dsr": round(d["dsr"], 3), "passes_0_95": d["dsr"] >= 0.95,
+                                "sharpe_annual": round(s["sr"] * np.sqrt(365), 2),
+                                "benchmark_sharpe_annual": round(d["sr0"] * np.sqrt(365), 2),
+                                "n_trials": n, "days": s["t"], "skew": round(s["skew"], 2), "kurtosis": round(s["kurt"], 2),
+                                "same_family_dsr": round(df_["dsr"], 3),
+                                "same_family_benchmark_sharpe_annual": round(df_["sr0"] * np.sqrt(365), 2)}
+        print(f"{name:12s} deflated Sharpe {d['dsr']:.3f} (Sharpe {s['sr'] * np.sqrt(365):.2f}/yr vs "
+              f"{d['sr0'] * np.sqrt(365):.2f}/yr expected from the best of {n} skill-less trials); same family "
+              f"{df_['dsr']:.3f} (bar {df_['sr0'] * np.sqrt(365):.2f}/yr)", flush=True)
+
+
 def run_lab(cfg: Settings, data: dict[str, pd.DataFrame], warmup_days: int = 95,
             only: list[str] | None = None, tag: str = "lab") -> dict:
     first = max(d.index[0] for d in data.values())
@@ -152,6 +182,7 @@ def run_lab(cfg: Settings, data: dict[str, pd.DataFrame], warmup_days: int = 95,
     report = {"window": f"{start.date()} -> {last.date()}", "market": cfg.market, "allow_short": cfg.allow_short,
               "max_leverage": cfg.max_leverage, "taker_fee": cfg.taker_fee, "gst": cfg.gst,
               "slippage": cfg.slippage, "candidates": {}}
+    trials: dict[tuple[str, int], pd.Series] = {}  # daily returns of every (candidate, parameter) run
     for name, (fn, params, over, daily) in CANDIDATES.items():
         if only and name not in only:
             continue
@@ -164,6 +195,7 @@ def run_lab(cfg: Settings, data: dict[str, pd.DataFrame], warmup_days: int = 95,
         for p in params:
             r = run_one(c, data, fn, p, daily, start, last)
             variants.append(r.metrics.get("return_pct", -100.0))
+            trials[(name, p)] = r.curve.resample("1D").last().dropna().pct_change().dropna()
             if p == main_p:
                 full_main, full_res = r.metrics, r
         windows = [run_one(c, data, fn, main_p, daily, edges[i], edges[i + 1]).metrics.get("return_pct", 0.0)
@@ -191,5 +223,6 @@ def run_lab(cfg: Settings, data: dict[str, pd.DataFrame], warmup_days: int = 95,
     report["buy_and_hold_pct"] = bh
     out = ROOT / "reports"
     out.mkdir(exist_ok=True)
+    _deflate(report, trials, out, tag)
     (out / f"{tag}.json").write_text(json.dumps(report, indent=2))
     return report
