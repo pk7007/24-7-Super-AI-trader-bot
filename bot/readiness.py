@@ -143,6 +143,12 @@ def _defaults_within_policy() -> bool:
         return False
 
 
+def _testnet_ok() -> bool:
+    from .testnet_check import passed_recently
+
+    return passed_recently()
+
+
 def _heartbeat_ok() -> bool:
     from .heartbeat import recent_ok
 
@@ -218,7 +224,9 @@ def score_items(tr: dict | None = None) -> list[tuple[str, float, str, bool]]:
         # Exchange (15)
         ("Exchange integration and execution", 5, "live spot exchange adapter (bot/broker/spot.py)", (ROOT / "bot" / "broker" / "spot.py").exists()),
         ("Exchange integration and execution", 4, "verified exchange-side spot stop order", False),
-        ("Exchange integration and execution", 3, "sandbox/testnet order test passed", False),
+        ("Exchange integration and execution", 3, "testnet order test passed in the last 30 days (python -m bot.main testnet-check)",
+         _passed(tr, "test_partial_old_or_mainnet_runs_do_not_count", "test_failed_step_error_or_cleanup_is_not_a_pass")
+         and _testnet_ok()),
         ("Exchange integration and execution", 3, "reconcile before trading: refuse, flatten orphans, clean DB",
          _passed(tr, "test_rule3_step_refuses_before_reconcile", "test_rule3_orphan_exchange_position_is_flattened",
                  "test_rule3_db_position_gone_from_exchange_is_cleaned")),
