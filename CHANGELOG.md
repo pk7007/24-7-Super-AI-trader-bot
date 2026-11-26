@@ -4,6 +4,11 @@
 * `testnet-check` passed all 11 steps on the Delta India testnet (market entry, exchange-side stop resting, cancel, reconcile re-places a missing stop, orphan position flattened, fills). Test account left flat.
 * `bot/testnet_check.py` now saves every run, pass or fail, to `reports/testnet_check.json` (steps, evidence, endpoint, time; never keys or error text). `bot/readiness.py` credits "testnet order test" only for a full passing run against the testnet address in the last 30 days. 3 tests; 233 pass.
 * Readiness 50 -> 53/100 (DEVELOPMENT ONLY); audit 5.6 -> 5.7/10 (execution 3 -> 4). Futures only: the spot execution blocker stands.
+* Heartbeat every 5 minutes: `heartbeat.Pacer` pings `HEARTBEAT_URL` every 5 minutes from the wait loop (including retry waits) and right after each processed candle. A candle skipped after all retries stops the pings until a later candle succeeds, so a running-but-failing bot also alerts. Suggested monitor: period 5 min, grace 7 min (alert within about 12 minutes). 3 tests; 236 pass.
+* `HEARTBEAT_URL` configured; bots restarted on the new code and both delivered pings (0 failures).
+* Daily backup task `IndiaCryptoBot-backup` (09:00 local, `bot.backup --drill`, keeps 14 zips). First run: exit 0, drill passed, row counts match.
+* Leaked production keys reported deleted by the owner; `I_UNDERSTAND_LIVE_RISK` confirmed cleared.
+* Readiness 53 -> 56/100 (monitoring 2 -> 5 of 5; still DEVELOPMENT ONLY). Audit 5.7 -> 5.8/10 (security, infrastructure, monitoring 5 -> 6 each).
 
 ## 2026-11-26 (audit code fixes: audit 5.2 -> 5.6, readiness 43 -> 50)
 * Risk: `bot/portfolio_risk.py` blocks an entry when the portfolio's 1-day 97.5% historical expected shortfall (joint daily returns, so correlation counts) would exceed `max_es_pct` (2%, new policy ceiling, env can only tighten), or when gross exposure would exceed `max_leverage` x equity. Fail-closed on missing history (replay only warns). Uses closed daily candles only (`Feed.daily_closes`). On live data the cap does not bind at current sizing (worst pair 0.77% of equity); coin correlations are 0.85-0.90.

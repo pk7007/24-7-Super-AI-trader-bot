@@ -11,5 +11,5 @@
 9. **One regime-sensitive style.** Trend following loses in chop; it had ~30% win rate and long flat periods.
 10. **No news, sentiment, on-chain or order-book intelligence; no regime or drift agent; no dashboard; no HTTP API.**
 11. **Risk limits differ from the prompt's suggestions:** daily kill-switch is 3% (prompt: ~1%); weekly 6% / monthly 10% limits added but their values are my assumptions; no VaR/ES; no correlation cap.
-12. **Operational:** runs on one PC as scheduled tasks (only while logged in and awake). A 24/7 server package is prepared (DEPLOYMENT.md) but not deployed, and the Docker image has never been built. No external heartbeat alert; no automated backups.
+12. **Operational:** runs on one PC as scheduled tasks (only while logged in and awake). A 24/7 server package is prepared (DEPLOYMENT.md) but not deployed, and the Docker image has never been built. External heartbeat configured (2026-11-27; both bots share one check) and a daily backup task with a restore drill; backups stay on the same disk until copied off.
 13. **No CI yet.** The code is on GitHub, but tests only run locally; there is no automated test workflow.

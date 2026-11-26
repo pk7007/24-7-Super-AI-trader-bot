@@ -1,8 +1,10 @@
 """Optional external heartbeat ("dead man's switch").
 
 Alerts on this PC cannot fire when the PC itself is off or asleep. Set ``HEARTBEAT_URL`` in ``.env`` to the ping URL
-of an outside monitor (for example a free healthchecks.io check set to a 15-minute period with a grace time); the
-bot sends one HTTPS GET after every processed candle, and the monitor emails or messages you when pings stop.
+of an outside monitor (for example a free healthchecks.io check, period 5 minutes, grace 7 minutes); the bot sends
+an HTTPS GET every 5 minutes and right after each processed candle, and the monitor emails or messages you when
+pings stop. Pings stop when the bot dies, the PC sleeps or the network drops, and also when a candle is skipped
+after all its retries failed (until a later candle succeeds), so "running but broken" alerts too.
 Nothing is sent when it is not set. Only https URLs are used. The URL is treated as a secret: it is never logged
 or written to disk. Status goes to ``state/<mode>/heartbeat.json``.
 """
@@ -12,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -50,6 +53,32 @@ def ping(status: Path, opener=_open, timeout: float = 10.0) -> bool | None:
     except OSError:
         pass
     return ok
+
+
+EVERY_S = 300  # 5 minutes; set the outside monitor's period to 5 min and grace to about 7 min
+
+
+class Pacer:
+    """Pings every ``every_s`` seconds while healthy. A skipped candle stops pings until a candle succeeds."""
+
+    def __init__(self, status: Path | str, every_s: float = EVERY_S, send=ping, now=time.monotonic):
+        self.status, self.every_s, self.send, self.now = Path(status), every_s, send, now
+        self.healthy, self.last = True, None
+
+    def candle(self, ok: bool) -> None:
+        """Call after each candle step: True = processed (ping now), False = skipped after every retry failed."""
+        self.healthy = bool(ok)
+        if self.healthy:
+            self._send()
+
+    def tick(self) -> None:
+        """Call often (every wait slice); pings only when healthy and ``every_s`` has passed since the last ping."""
+        if self.healthy and (self.last is None or self.now() - self.last >= self.every_s):
+            self._send()
+
+    def _send(self) -> None:
+        self.last = self.now()  # set even if delivery fails, so a dead network is not hammered every slice
+        self.send(self.status)
 
 
 def recent_ok(status: Path, minutes: int = 60) -> bool:

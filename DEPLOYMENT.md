@@ -14,6 +14,9 @@
 |---|---|---|---|
 | `IndiaCryptoBot-paper` | `wscript.exe deploy\start_bot_hidden.vbs paper` | at your logon, and every 10 minutes | none |
 | `IndiaCryptoBot-shadow` | `wscript.exe deploy\start_bot_hidden.vbs shadow` | same | none |
+| `IndiaCryptoBot-backup` (added 2026-11-27) | `pythonw.exe -m bot.backup --drill` (no window), in the project folder | daily 09:00 local; runs at the next chance if missed | 30 min |
+
+* The backup task zips each bot's state database and ledger into `backups\state_<UTC>.zip` (consistent SQLite copy while the bots run), checks every file's hash, test-restores into a temporary folder, compares row counts and writes `reports/backup_drill.json`. It keeps the newest 14 zips. Copy `backups\` off this PC weekly; a dead disk takes the backups with it.
 
 * `start_bot_hidden.vbs` starts `run_bot.cmd <mode>` with no window, and exits quietly if that bot is already running. So the 10-minute check only restarts a bot that has died, and it fills no logs.
 * `run_bot.cmd` and the launcher accept only `paper` or `shadow`; live cannot be started from either.

@@ -1,17 +1,19 @@
 # Audit report - 2026-11-26, re-scored after the code fixes (supersedes the 2026-11-24 version; `AUDIT.md` kept for history)
 
 **Decision: NOT READY for live capital. Paper trading only.**
-Weighted score **5.7 / 10** (4.4 on 2026-11-24, 5.2 on the morning of 11-26). Readiness scorer (`python -m bot.readiness`): **53/100, DEVELOPMENT ONLY** (was 43, then 50 before the testnet pass).
+Weighted score **5.8 / 10** (4.4 on 2026-11-24, 5.2 on the morning of 11-26, 5.7 after the testnet pass). Readiness scorer (`python -m bot.readiness`): **56/100, DEVELOPMENT ONLY** (was 43, then 50, then 53 after the testnet pass; 56 once heartbeat pings were delivered).
 A high score could never override the blockers below. 9/10 is not reachable by code alone (see the last section).
 
 ## What was run (2026-11-26)
 
 | Check | Result |
 |---|---|
-| `python -m pytest -q` (run by the readiness scorer) | **233 passed** (230 before the testnet-report tests) |
+| `python -m pytest -q` (run by the readiness scorer) | **236 passed** (230, then 233 with the testnet-report tests, then 236 with the 5-minute heartbeat tests) |
+| Daily backup task `IndiaCryptoBot-backup` (2026-11-27) | registered (09:00 daily, `bot.backup --drill`); first run exit 0, drill passed, row counts match |
+| Outside heartbeat (2026-11-27) | `HEARTBEAT_URL` set; both bots delivered pings (0 failures), now every 5 minutes |
 | `testnet-check` on the Delta India testnet (2026-11-27) | **11/11 passed**, cleanup OK, account left flat; saved in `reports/testnet_check.json` |
 | Frontend `npm test` / `npm run typecheck` | 23 passed / 0 errors (before the morning merge; frontend unchanged since) |
-| `python -m bot.readiness` | 53/100, DEVELOPMENT ONLY, state PAPER (50 before the testnet pass) |
+| `python -m bot.readiness` | 56/100, DEVELOPMENT ONLY, state PAPER (50 before the testnet pass, 53 before the heartbeat) |
 | Lab rerun, current policy, all 5 strategies (`lab_spot_policy_mp2`) | ensemble **reproduced exactly**: +21.8%, PF 2.5, 83 trades, max DD -4.7%, P(loss) 1.3% |
 | Lab rerun at 0.50% fees, all 5 strategies (`lab_policy_fee_0.005`) | ensemble reproduced exactly: +15.9%, PF 2.1 |
 | **Deflated Sharpe** (new, `bot/stats.py`) | ensemble Sharpe 1.16/yr; **DSR 0.000** counting all 97 trials, **0.780** within the trend family; bar is 0.95 |
@@ -39,11 +41,11 @@ Overall is capped at 6 while no benchmark is met. At about 2.6 trades a month, 1
 2. ~~`DeltaBroker` has never run against a real API~~ **Resolved for the testnet on 2026-11-27:** `testnet-check` passed all 11 steps on the Delta India testnet (entry, exchange-side stop, cancel, stop re-placed on restart, orphan flattened), saved in `reports/testnet_check.json`. Futures only; the spot blocker above still stands.
 3. **No forward evidence:** 0 paper trades, 0 shadow intents.
 4. **Legal and tax assumptions unverified** (COMPLIANCE.md).
-5. **Exposed production credentials** (SECURITY.md) not confirmed deleted on the exchange.
+5. ~~Exposed production credentials~~ **Reported deleted by the owner on 2026-11-27** (exchange-side; cannot be verified from this machine). `I_UNDERSTAND_LIVE_RISK` confirmed cleared in `.env` and not set in the Windows environment.
 
 ## Weighted scores (0-10; evidence or the score stays low)
 
-| Domain | Weight | 11-24 | 11-26 am | **11-26 pm** | Evidence and what is missing |
+| Domain | Weight | 11-24 | 11-26 am | **now (11-27)** | Evidence and what is missing |
 |---|---:|---:|---:|---:|---|
 | Quantitative strategy quality | 10% | 6 | 6 | **5** | Gate passed, holdout PF 1.87. **New negative evidence:** deflated Sharpe 0.000 (all trials) / 0.780 (trend family), so the edge is not yet distinguishable from selection luck; trails buy-and-hold on return; no forward trades |
 | AI / machine learning | 8% | 3 | 3 | **4** | Champion-challenger pipeline built and tested; first logged decision (4 challengers rejected, reasons and trial count recorded). No AI model beats the no-model baseline |
@@ -52,15 +54,15 @@ Overall is capped at 6 while no benchmark is met. At about 2.6 trades a month, 1
 | Risk management | 15% | 5 | 7 | **8** | Added: correlation-aware 1-day 97.5% expected-shortfall cap (2% of equity, policy ceiling, fail-closed) and gross-exposure cap in the engine, 12 tests. At current sizing the ES cap is a backstop (worst pair 0.77%). Not verified on a real exchange |
 | Execution reliability | 10% | 3 | 3 | **4** | Delta connector verified on the India testnet (11/11: orders, exchange-side stop, restart recovery, orphan flatten), recorded and re-checked by readiness. No spot adapter |
 | Portfolio management | 5% | 3 | 3 | **4** | Entries now see the joint, correlated risk of what is already held; no allocation or rebalancing |
-| Security | 7% | 4 | 4 | **5** | Added: `pip-audit` clean on requirements and venv; heartbeat URL handled as a secret (tested). Exposed keys still not confirmed rotated |
+| Security | 7% | 4 | 4 | **6** | `pip-audit` clean on requirements and venv; heartbeat URL handled as a secret (tested); leaked production keys reported deleted by the owner and the live-risk flag cleared (11-27). No IP-whitelisted, trade-only key verified yet |
 | Regulatory & tax | 5% | 2 | 2 | **2** | Unchanged |
-| Infrastructure & reliability | 5% | 3 | 4 | **5** | Added: keep-awake, same-candle retry, consistent backups with a passed restore drill. Backups not yet scheduled; Docker unbuilt; single PC |
-| Testing & verification | 5% | 6 | 7 | **7** | 233 Python + 23 frontend tests. No property-based, chaos or end-to-end browser tests |
-| Monitoring & analytics | 3% | 3 | 5 | **5** | External heartbeat built and tested but **not configured** (needs your HEARTBEAT_URL); rises to 6 once pings are delivered |
+| Infrastructure & reliability | 5% | 3 | 4 | **6** | Keep-awake, same-candle retry, consistent backups; daily scheduled backup with a restore drill every run (first run passed, 11-27). Docker unbuilt; single PC; backups stay on the same disk |
+| Testing & verification | 5% | 6 | 7 | **7** | 236 Python + 23 frontend tests. No property-based, chaos or end-to-end browser tests |
+| Monitoring & analytics | 3% | 3 | 5 | **6** | External heartbeat configured and delivering (11-27): pings every 5 min, stop after a skipped candle; suggested monitor 5/7 min. Both bots share one check, so one dead bot can be masked by the other |
 | User interface | 2% | 0 | 7 | **7** | Read-only dashboard (self-scored 7.8/10) |
 | Cost efficiency | 3% | 7 | 7 | **7** | Zero paid services |
 | Documentation | 2% | 6 | 7 | **7** | Reports kept current with the code |
-| **Weighted total** | 100% | **4.4** | **5.2** | **5.7** | (5.6 before the testnet pass) |
+| **Weighted total** | 100% | **4.4** | **5.2** | **5.8** | (5.6 code fixes; 5.7 testnet pass; 5.8 after keys, heartbeat and backup task on 11-27) |
 
 ## Biggest findings
 1. **Selection bias is real.** After counting the 97 strategy settings tried, the ensemble's backtest Sharpe (1.16/yr) is below what the luckiest skill-less strategy would show. Even within the trend family the deflated Sharpe is 0.78, short of 0.95. Only forward paper trades can settle this.
@@ -73,9 +75,8 @@ The overall score is capped at 6 until the paper benchmark is met, and the remai
 
 | Needs | Moves |
 |---|---|
-| Delete the leaked Delta production keys (testnet key and `testnet-check`: done) | Security |
+| ~~Delete the leaked Delta production keys~~, testnet key, `testnet-check`, `HEARTBEAT_URL`, daily backup task: **done 11-27** | Security, Monitoring, Infrastructure |
 | Choose a spot venue with an exchange-side stop order, then build its adapter | Execution (largest gap) |
 | Chartered-accountant confirmation of tax and TDS | Regulatory |
 | 30-90 days of paper and shadow trading on an always-on machine (VPS) | Strategy quality, benchmark cap, uptime |
-| Set `HEARTBEAT_URL` (free healthchecks.io check) | Monitoring |
-| Approve a daily scheduled backup task | Infrastructure |
+| Copy `backups\` off this PC weekly (OneDrive or USB) | Infrastructure |
