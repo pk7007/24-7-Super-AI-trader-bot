@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .broker.base import Feed
+from .broker.base import Feed, closed_days
 from .config import Settings
 from .data import COLUMNS, rows_to_frame, source_exchange, source_symbol, validate_candles
 
@@ -45,6 +45,13 @@ class LiveFeed(Feed):
     def last_price(self, symbol: str) -> float:
         return float(self.ex.fetch_ticker(source_symbol(self.cfg, symbol))["last"])
 
+    def daily_closes(self, symbol: str, days: int) -> pd.Series:
+        """One request for daily candles; the forming UTC day is dropped."""
+        rows = self.ex.fetch_ohlcv(source_symbol(self.cfg, symbol), "1d", limit=min(days + 1, 1000))
+        df = rows_to_frame(rows)
+        df = df[df.index + pd.Timedelta(days=1) <= self.now()]
+        return df["close"].astype(float).tail(days)
+
     def range_since(self, symbol: str, since: pd.Timestamp) -> list[tuple[float, float]]:
         ms = int((since.floor("1min") - pd.Timedelta(minutes=1)).timestamp() * 1000)
         rows = self.ex.fetch_ohlcv(source_symbol(self.cfg, symbol), "1m", since=ms, limit=500)
@@ -81,6 +88,10 @@ class ReplayFeed(Feed):
         if self.ts in d.index:
             return float(d.at[self.ts, "open"])
         return float(d[d.index < self.ts]["close"].iloc[-1])
+
+    def daily_closes(self, symbol: str, days: int) -> pd.Series:
+        d = self.data[symbol]
+        return closed_days(d[d.index < self.ts], self.ts).tail(days)
 
     def range_since(self, symbol: str, since: pd.Timestamp) -> list[tuple[float, float]]:
         d = self.data[symbol]

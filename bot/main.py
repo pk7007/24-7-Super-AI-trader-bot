@@ -21,7 +21,7 @@ from dataclasses import replace
 
 import pandas as pd
 
-from . import notify
+from . import heartbeat, notify
 from .backtest import prepare, simulate, walk_forward_probs
 from .broker.paper import PaperBroker
 from .config import ROOT, Settings, load_env
@@ -240,7 +240,8 @@ async def run_forever(eng: Engine, cfg: Settings) -> None:
             nxt += tf
         await wait((nxt - _utcnow()).total_seconds())
         await asyncio.sleep(4)  # let the exchange publish the closed candle
-        await step_with_retry(eng, nxt, deadline=nxt + tf - pd.Timedelta(seconds=60), sleep=wait)
+        if await step_with_retry(eng, nxt, deadline=nxt + tf - pd.Timedelta(seconds=60), sleep=wait):
+            await asyncio.to_thread(heartbeat.ping, cfg.run_dir / "heartbeat.json")  # no-op unless HEARTBEAT_URL set
 
 
 def cmd_paper(cfg: Settings, a) -> None:
