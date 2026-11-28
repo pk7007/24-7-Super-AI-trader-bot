@@ -6,8 +6,8 @@
 
 Rule-based trend strategies · Strict risk limits · Exchange-side stops · Crash recovery · India tax ledger
 
-![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-57%20passing-2ea44f)
+![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-offline%20suite-2ea44f)
 ![Mode](https://img.shields.io/badge/default%20mode-paper%20trading-blue)
 ![Status](https://img.shields.io/badge/live%20trading-not%20ready-red)
 ![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)
@@ -20,9 +20,13 @@ Rule-based trend strategies · Strict risk limits · Exchange-side stops · Cras
 > [!WARNING]
 > **This is research software. It is not ready to trade real money.**
 > Every result below comes from backtests, one historical replay and a short stretch of paper trading.
-> The live Delta Exchange broker has **never been run against the real API**, and there is **no spot
-> exchange connector yet**. Paper mode is the default and needs no API keys.
+> The Delta perpetual broker has a recorded **testnet check, with no live-money verification**. There is
+> **no spot exchange connector yet**. Paper mode is the default and needs no API keys.
 > Nothing here is financial advice. Read [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) before trusting any number.
+
+> **2026-11-28 audit:** older spot backtest tables below used perpetual lot sizes and omitted the INR minimum-order gate. Both are corrected in code; those tables remain historical. See [AUDIT_REPORT.md](AUDIT_REPORT.md) for current verification and remaining blockers.
+
+> **Full audit update:** 378 Python tests passed on Windows/Linux, 25 frontend tests passed, and the Docker build/browser smoke checks completed. The corrected 30-day-hold ensemble backtested at +22.03% base fees; **the 0.50% fee-stress robustness gate failed**. See [the full report](FULL_AUDIT_2026-11-28.md). Live trading remains blocked.
 
 ## Table of contents
 
@@ -99,7 +103,7 @@ ensemble returned **+5.3%** with a -5.5% max drawdown while BTC fell 61%.
 
 ## Quick start
 
-Requires **Python 3.11+**. Paper mode needs no API keys.
+Requires **Python 3.12+** for the verified dependency lock. Paper mode needs no API keys.
 
 ```bash
 git clone https://github.com/pk7007/24-7-Super-AI-trader-bot.git
@@ -109,7 +113,7 @@ python -m venv venv
 venv\Scripts\activate            # Windows
 # source venv/bin/activate       # Linux / macOS
 
-pip install -r requirements.txt
+pip install -r requirements.txt -c requirements.lock
 cp .env.example .env             # Windows: copy .env.example .env
 
 python -m bot.main fetch --days 540     # download public market data
@@ -236,7 +240,7 @@ More detail in [ARCHITECTURE.md](ARCHITECTURE.md).
 │   ├── api/               # read-only dashboard API (python -m bot.api)
 │   └── broker/            # paper, shadow and Delta Exchange brokers
 ├── frontend/              # AI Trade Labs dashboard (React + TypeScript, Vite)
-├── tests/                 # 57 tests, including one per safety rule
+├── tests/                 # offline regressions, including the safety rules
 ├── deploy/                # VPS setup and bundle scripts
 ├── Dockerfile
 ├── docker-compose.yml     # paper + shadow services with health checks

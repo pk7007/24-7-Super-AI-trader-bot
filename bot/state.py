@@ -38,6 +38,11 @@ class State:
         self.db = sqlite3.connect(str(path), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(fills)")}
+        if "fill_id" not in columns:
+            self.db.execute("ALTER TABLE fills ADD COLUMN fill_id TEXT NOT NULL DEFAULT ''")
+        self.db.execute("CREATE UNIQUE INDEX IF NOT EXISTS fills_execution_identity "
+                        "ON fills(fill_id) WHERE fill_id != ''")
         self.db.commit()
 
     # ------------------------------------------------------------- positions
@@ -60,11 +65,11 @@ class State:
         self.db.commit()
 
     # ----------------------------------------------------------------- fills
-    def add_fill(self, ts, symbol, side, qty, price, fee, realized_pnl, reason, order_id) -> None:
+    def add_fill(self, ts, symbol, side, qty, price, fee, realized_pnl, reason, order_id, fill_id="") -> None:
         self.db.execute(
-            "INSERT INTO fills(ts,symbol,side,qty,price,fee,realized_pnl,reason,order_id) "
-            "VALUES(?,?,?,?,?,?,?,?,?)",
-            (ts, symbol, side, qty, price, fee, realized_pnl, reason, order_id),
+            "INSERT INTO fills(ts,symbol,side,qty,price,fee,realized_pnl,reason,order_id,fill_id) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(fill_id) WHERE fill_id != '' DO NOTHING",
+            (ts, symbol, side, qty, price, fee, realized_pnl, reason, order_id, fill_id),
         )
         self.db.commit()
 
@@ -82,6 +87,14 @@ class State:
             (key, str(value)),
         )
         self.db.commit()
+
+    def kv_set_many(self, values: dict[str, str]) -> None:
+        """Persist a safety snapshot atomically; a failed write rolls back every key."""
+        with self.db:
+            self.db.executemany(
+                "INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                [(key, str(value)) for key, value in values.items()],
+            )
 
     def close(self) -> None:
         self.db.close()

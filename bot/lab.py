@@ -17,7 +17,7 @@ from dataclasses import replace
 import numpy as np
 import pandas as pd
 
-from .backtest import simulate
+from .backtest import SIMULATION_VERSION, simulate
 from .config import ROOT, Settings
 from .features import atr
 from .stats import count_lab_trials, deflated_sharpe, sharpe_stats
@@ -72,7 +72,7 @@ def state_meanrev(df, thr):
     return pd.Series(s, index=df.index)
 
 
-SLOW = dict(horizon=BPD * 90, stop_atr=2.0, tp_atr=1000.0, risk_per_trade=0.01, max_leverage=2.0, max_positions=3)
+SLOW = dict(horizon=BPD * 30, stop_atr=2.0, tp_atr=1000.0, risk_per_trade=0.01, max_leverage=2.0, max_positions=3)
 FAST = dict(horizon=32, stop_atr=2.0, tp_atr=2.0, risk_per_trade=0.005, max_leverage=2.0, max_positions=3)
 
 # name -> (state fn, parameter variants (middle one is the "main" setting), config overrides, daily-scale ATR?)
@@ -121,7 +121,8 @@ def monte_carlo(pnls: list[float], start_equity: float, n_sims: int = 3000, seed
         return {"p_loss": 1.0, "median_ret_pct": 0.0, "p5_ret_pct": 0.0, "p95_dd_pct": 100.0}
     rng = np.random.default_rng(seed)
     arr = np.array(pnls)
-    paths = start_equity + np.cumsum(rng.choice(arr, size=(n_sims, len(arr)), replace=True), axis=1)
+    paths = np.column_stack((np.full(n_sims, start_equity),
+                             start_equity + np.cumsum(rng.choice(arr, size=(n_sims, len(arr)), replace=True), axis=1)))
     final = paths[:, -1]
     peak = np.maximum.accumulate(paths, axis=1)
     dd = ((paths - peak) / peak).min(axis=1)
@@ -179,7 +180,7 @@ def run_lab(cfg: Settings, data: dict[str, pd.DataFrame], warmup_days: int = 95,
     last = min(d.index[-1] for d in data.values()) + pd.Timedelta(minutes=cfg.tf_minutes)
     start = first + pd.Timedelta(days=warmup_days)
     edges = pd.date_range(start, last, periods=5)
-    report = {"window": f"{start.date()} -> {last.date()}", "market": cfg.market, "allow_short": cfg.allow_short,
+    report = {"simulation_version": SIMULATION_VERSION, "window": f"{start.date()} -> {last.date()}", "market": cfg.market, "allow_short": cfg.allow_short,
               "max_leverage": cfg.max_leverage, "taker_fee": cfg.taker_fee, "gst": cfg.gst,
               "slippage": cfg.slippage, "candidates": {}}
     trials: dict[tuple[str, int], pd.Series] = {}  # daily returns of every (candidate, parameter) run
@@ -206,7 +207,7 @@ def run_lab(cfg: Settings, data: dict[str, pd.DataFrame], warmup_days: int = 95,
             "effective_config": {k: getattr(c, k) for k in (
                 "risk_per_trade", "max_positions", "max_leverage", "daily_loss_limit", "weekly_loss_limit",
                 "monthly_loss_limit", "stop_atr", "taker_fee", "maker_fee", "gst", "slippage", "stop_slippage",
-                "allow_short", "market")},
+                "allow_short", "market", "horizon", "stop_atr", "tp_atr")},
             "main_param": main_p, "full": {k: full_main[k] for k in ("return_pct", "max_drawdown_pct", "profit_factor",
                                                                       "trades", "win_rate_pct", "fees_paid_usd")},
             "subperiod_returns_pct": [round(w, 1) for w in windows],

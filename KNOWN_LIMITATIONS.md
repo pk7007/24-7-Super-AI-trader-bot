@@ -1,15 +1,20 @@
 # Known limitations (read before trusting any number)
 
-1. **No live-money evidence.** All results are backtests, a 45-day replay and a few hours of paper trading.
+1. **No live-money evidence.** Results are historical backtests/replays and a short, interrupted paper run. Elapsed calendar days are not proof of successful candle coverage.
 2. **Selection bias.** Candidates were compared on the same 3.6-year window; the winner's return is optimistic.
 3. **Crash test is one sample.** A pre-registered 2021-2022 holdout (includes the 2022 crash) passed: +5.3%, DD -5.5%, 40 trades, while BTC fell 61%. One period, small sample, low return.
 4. **Spot execution does not exist.** No spot connector is built. CoinDCX spot (researched) has no documented exchange-side stop, no sandbox and no documented no-withdrawal key scope; its official fee page could not be read (HTTP 403). See EXCHANGE_RESEARCH.md.
-5. **`DeltaBroker` (perpetuals) was never run against the real API** - testnet check blocked on a demo-site key.
+5. **Delta is a perpetual-futures adapter, not spot.** The recorded 2026-11-27 testnet check passed 11 steps; this is not live-money evidence. The adapter now refuses a spot configuration before connecting.
 6. **Signals come from Binance, execution would be elsewhere** (basis risk). Delta India's own candle history failed validation.
 7. **Fees, minimum order size, TDS and tax rates are assumptions** (`config.py`, `feasibility.py`) - not verified against official sources this session.
 8. **Paper broker is optimistic:** no spread/depth model, fixed slippage, 1-minute stop checks, no funding or liquidation.
 9. **One regime-sensitive style.** Trend following loses in chop; it had ~30% win rate and long flat periods.
-10. **No news, sentiment, on-chain or order-book intelligence; no regime or drift agent; no dashboard; no HTTP API.**
-11. **Risk limits differ from the prompt's suggestions:** daily kill-switch is 3% (prompt: ~1%); weekly 6% / monthly 10% limits added but their values are my assumptions; no VaR/ES; no correlation cap.
-12. **Operational:** runs on one PC as scheduled tasks (only while logged in and awake). A 24/7 server package is prepared (DEPLOYMENT.md) but not deployed, and the Docker image has never been built. External heartbeat configured (2026-11-27; both bots share one check) and a daily backup task with a restore drill; backups stay on the same disk until copied off.
-13. **No CI yet.** The code is on GitHub, but tests only run locally; there is no automated test workflow.
+10. **No news, sentiment, on-chain or order-book intelligence; no regime or drift agent.** A read-only React dashboard and localhost FastAPI API exist; neither can send orders.
+11. **Risk limits:** environment-loaded defaults are 0.5% risk per trade, 1% daily / 3% weekly / 5% monthly losses, two positions and 1x spot exposure. The daily policy ceiling remains 3%, so the environment can loosen that default up to 3%. Correlation-aware expected shortfall exists in the runtime engine. Backtests do not implement that portfolio ES guard, so lab returns are not an exact replay of all runtime vetoes.
+12. **Operational:** runs on one PC as scheduled tasks (only while logged in and awake). The Docker image builds and its isolated Linux suite passes, but there is no 48h soak or deployed always-on server. Both modes still share one outside monitor; backups stay on the same disk until copied off.
+13. **CI added in the audit branch.** Python/frontend/container verification is defined in `.github/workflows/checks.yml`; consult PR checks for the actual remote result. Passing CI does not prove live readiness.
+14. **Historical spot backtests used perpetual lot sizes and omitted the minimum INR order gate.** Fixed on 2026-11-28. Earlier headline tables are historical and must not be treated as current-runtime predictions. New audit reruns are repeated development-data tests, not fresh holdouts.
+15. **Incomplete accounting stops entries.** If recording an entry fails, or stop placement fails before the entry is durably recorded, the engine persists `safety_accounting_halted=1`. Protection/emergency exits continue, but an operator must reconstruct the ledger and verify the account before clearing the marker. This is not automatic exactly-once fill recovery.
+16. **Backup scope:** each SQLite file uses an online consistent snapshot, but the databases, account JSON and CSV files are captured sequentially. A restore still needs reconciliation; it is not one atomic snapshot across all files.
+17. **Current research is not robust across fee stress.** Simulation version3 corrects initial drawdown and aligns slow holding horizons with the 30-day runtime default. The repeated ensemble development run fails the 0.50% fee-stress gate. Prior tables/holdouts do not prove this corrected model.
+18. **Changed adapter remains exchange-unverified.** Stable execution IDs/peek-ack accounting improve offline failure recovery, but Delta startup history/pagination remains incomplete. A separately authorized testnet campaign and professional/exchange checks are required before considering live operation.

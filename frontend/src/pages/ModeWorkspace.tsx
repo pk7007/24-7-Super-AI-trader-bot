@@ -35,6 +35,11 @@ export default function ModeWorkspace({ mode }: { mode: Mode }) {
           if (!m) return <Callout tone="warn">No data for this mode.</Callout>;
           return (
             <>
+              {m.accounting_halted === true ? (
+                <Callout tone="bad" title="Accounting reconciliation required.">
+                  New entries are halted because a fill could not be durably recorded. Protection and emergency exits continue. Verify the exchange account and repair the ledger before clearing the safety halt.
+                </Callout>
+              ) : null}
               {m.heartbeat.status !== "alive" ? (
                 <Callout tone="bad" title={`Bot ${m.heartbeat.status}.`}>
                   Last engine log {minutes(m.heartbeat.age_min)} ago (threshold {m.heartbeat.threshold_min} min). Figures below may be out of date.

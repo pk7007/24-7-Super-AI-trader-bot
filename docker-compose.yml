@@ -23,7 +23,7 @@ services:
     environment: {<<: *env, BOT_MODE: paper}
     command: ["python", "-m", "bot.main", "paper"]
     healthcheck:   # unhealthy if no heartbeat line for 40 min (one is written every 15 min)
-      test: ["CMD", "python", "-c", "import time,os,sys; p='/app/state/paper.log'; sys.exit(0 if time.time()-os.path.getmtime(p) < 2400 else 1)"]
+      test: ["CMD", "python", "-m", "bot.healthcheck", "paper"]
       interval: 5m
       timeout: 10s
       retries: 3
@@ -34,7 +34,7 @@ services:
     environment: {<<: *env, BOT_MODE: shadow}
     command: ["python", "-m", "bot.main", "shadow"]
     healthcheck:
-      test: ["CMD", "python", "-c", "import time,os,sys; p='/app/state/shadow.log'; sys.exit(0 if time.time()-os.path.getmtime(p) < 2400 else 1)"]
+      test: ["CMD", "python", "-m", "bot.healthcheck", "shadow"]
       interval: 5m
       timeout: 10s
       retries: 3

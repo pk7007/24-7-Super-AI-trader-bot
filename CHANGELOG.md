@@ -1,4 +1,23 @@
-# Changelog (no Git commits exist yet; this is the manual history)
+# Changelog
+
+## 2026-11-28 (full audit, isolated container/browser checks and PR)
+* Expanded review across trading, account persistence, data, configuration, API/frontend, backup/migration, dependencies and CI. Fixed partial/uncertain fill handling, finite-input and persisted-state fail-closed checks, atomic risk snapshots, durable execution peek/ack and idempotent SQLite-authoritative CSV recovery. Peer review caught and closed dirty-baseline retry and lost-exit-acknowledgment gaps.
+* Added success-only step markers, net-fee partial-trade forward accounting, future-evidence/nonzero-test-exit rejection. API no longer mutates global settings or reads dotenv, enforces loopback Host names, redacts credential patterns and labels stale research honestly. Migration bundles hold bot locks; account backup schema is validated.
+* 378 Python tests passed on Windows and in a network-disabled Linux container; 25 frontend tests/typecheck/build passed. pip/npm advisory scans report no known vulnerabilities. All15 browser routes rendered on desktop/mobile, tablet sampled; Settings snapshot accessibility100. No screenshot baseline or full performance trace.
+* Locked project dependencies and Python3.12 image digest; added least-privilege SHA-pinned CI. Container build and smoke passed without bot state/credentials. No running bot/task was changed; code activation still needs an authorized restart.
+* Simulation version3 fixes initial-capital drawdown and aligns lab slow holding horizon30days. Repeated ensemble backtest: +22.03% base / +11.41% stress; stress gate FAILED (2/4 positive subperiods). No fresh holdout, runtime promotion or earned-profit claim.
+* Current engineering assessment5.08 (5.1rounded), readiness41 DEVELOPMENT ONLY. Execution-version matching removes three stale pre-change testnet points; future validation must match the changed adapter. Full evidence/coverage/remaining blockers: FULL_AUDIT_2026-11-28.md. Live money remains blocked.
+
+## 2026-11-28 (independent repository audit and fixes)
+* Checked GitHub/local main at e8cb6c6; no open PRs or Actions runs at inspection. Local changes only; no credentials inspected, runtime processes/tasks changed, commit or push.
+* Fixed Windows archive restore escape/tampering, empty/failed backup false success, retention forwarding, recovery-point rotation and atomic publication; corrected SQLite URI encoding for special-character paths.
+* Stops now precede entry ledger writes; failed protection repairs trigger emergency flatten during startup/candle/monitor. Failed exits retain state/stops and block entries until flat. Interrupted accounting persists safety_accounting_halted across restart; operator reconciliation required, exposed by read-only overview.
+* Delta adapter rejects spot settings. Spot backtest/replay use spot lot steps, and backtest enforces minimum notional. Unversioned historical simulation reports no longer earn current readiness points.
+* Heartbeat handles malformed status and future timestamps; container health requires successful candles rather than a recently written error log. Docker build/soak not performed.
+* Offline tests isolate user dotenv/network and API data. Final suite: 278 Python tests; frontend 23 tests, typecheck/build passed. Independent risk/quant review found no remaining P0/P1 in changed paths.
+* Repeated cached development lab, all five candidates, base/0.50% fees; ensemble +23.92% / +12.20%, DSR0.000 both. Seven-day replay isolated under reports/audit_20261128. These are not new holdouts or earned profit.
+* Audit rescore 4.66/10 (4.7 rounded), NO-GO for live money; earlier5.8 superseded because missing evidence and modeling gaps were understated. Runtime keeps old code until a controlled restart; not performed here.
+* Readiness recomputed from the completed 278-test XML: 44/100 DEVELOPMENT ONLY (was56; twelve points invalidated from old simulation reports). Paper/shadow still zero completed trades. Refreshed readiness documents and local profit_report.html with clearly separated paper/backtest evidence.
 
 ## 2026-11-28 (incident: paper bot down about 28 h, heartbeat pings failing)
 * What happened (local time): 27 Nov ~08:43 the PC went to sleep (lid or power button; keep-awake only stops idle sleep), both bots paused. 21:59 unexpected power-off while asleep (Kernel-Power 41 / EventLog 6008, most likely a flat battery). The paper bot's last account save had not reached the disk: `state/paper/paper_exchange.json` came back as 68 zero bytes, and every 10-minute restart crashed on it (`JSONDecodeError`). Shadow restarted fine. Separately, every heartbeat ping since the reboot failed: hc-ping.com moved to a Sectigo certificate chain (`Sectigo Public Server Authentication CA DV E36`) that the Windows trust store did not have; `certifi` did.

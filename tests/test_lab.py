@@ -49,3 +49,7 @@ def test_gate_requires_every_condition():
     assert not gate(full, [5, 3, 1, 8], [10, -20, -5], mc_ok)[0]  # fragile to parameters
     assert not gate(full, [5, 3, 1, 8], [10, 20, 5], {"p_loss": 0.4})[0]
     assert not gate({"return_pct": 5.0, "profit_factor": 1.05}, [5, 3, 1, 8], [10, 20, 5], mc_ok)[0]
+def test_monte_carlo_drawdown_includes_initial_capital():
+    from bot.lab import monte_carlo
+    result = monte_carlo([-1.] * 10, 100, n_sims=10)
+    assert result["p95_dd_pct"] == 10

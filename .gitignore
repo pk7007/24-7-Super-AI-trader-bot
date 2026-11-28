@@ -19,6 +19,7 @@ backups/
 trades_ledger.csv
 *.log
 *.lock
+!requirements.lock
 *.tmp
 
 # Build output

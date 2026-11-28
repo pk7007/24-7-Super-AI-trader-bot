@@ -34,7 +34,7 @@ export default function Settings() {
               ["Refresh", <span>30–60 s while this tab is visible</span>],
               ["Order entry", <Badge tone="outline">none, by design</Badge>],
               ["Live trading", <Badge tone="bad">disabled</Badge>],
-              ["Risk configuration", <span>read-only; changed through code review</span>],
+              ["Risk configuration", <span>inferred launch profile; running-process overrides are unverified</span>],
             ]}
           />
         </Panel>

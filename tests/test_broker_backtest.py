@@ -80,6 +80,33 @@ def test_backtest_flat_market_loses_exactly_costs():
     assert res.metrics["end_equity"] < cfg.start_equity
 
 
+def test_spot_backtest_uses_spot_lot_steps_and_minimum_order():
+    from dataclasses import replace
+    from bot.feeds import SPOT_STEP
+    from bot.risk import position_units, to_contracts
+
+    cfg = Settings(market="spot", allow_short=False, max_leverage=1, start_equity=113.6,
+                   funding_per_8h=0, min_order_inr=100)
+    df, feats, probs, idx = _flat_world()
+    df[["open", "high", "low", "close"]] *= 600  # BTC at $60,000
+    probs[SYM].loc[idx[20]] = [0.05, 0.05, 0.9]
+    args = ({SYM: df}, feats, probs, idx[0], idx[-1] + pd.Timedelta(minutes=15))
+    result = simulate(cfg, *args)
+    assert len(result.trades) == 1
+    expected = to_contracts(position_units(cfg.start_equity, 60000, 0.002, cfg), SPOT_STEP[SYM])
+    assert result.trades[0].contracts == expected
+    assert not simulate(replace(cfg, min_order_inr=1_000_000), *args).trades
+
+
+def test_replay_feed_uses_market_lot_steps_and_preserves_overrides():
+    from bot.feeds import DEFAULT_CONTRACT_SIZE, SPOT_STEP, ReplayFeed
+    df, _, _, _ = _flat_world()
+    for market, expected in (("spot", SPOT_STEP), ("perp", DEFAULT_CONTRACT_SIZE)):
+        cfg = Settings(market=market)
+        assert ReplayFeed({SYM: df}, cfg).contract_size(SYM) == expected[SYM]
+        assert ReplayFeed({SYM: df}, cfg, {SYM: 0.123}).contract_size(SYM) == 0.123
+
+
 def test_backtest_stop_beats_tp_when_both_touched_in_one_candle():
     cfg = Settings()
     df, feats, probs, idx = _flat_world()

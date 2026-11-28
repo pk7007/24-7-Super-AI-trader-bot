@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import math
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -112,31 +114,45 @@ class Settings:
         return ROOT / "models" / "model.joblib"
 
     @classmethod
-    def from_env(cls) -> "Settings":
-        load_env()
+    def from_env(cls, environ: Mapping[str, str] | None = None, *, read_dotenv: bool = True) -> "Settings":
+        """Parse one settings snapshot; observers can explicitly avoid dotenv and global writes."""
+        if read_dotenv:
+            load_env()
+        env = dict(os.environ if environ is None else environ)
         s = cls()
-        chosen = os.environ.get("STRATEGY", "trend").lower()
+        chosen = env.get("STRATEGY", "trend").lower()
+        market = env.get("MARKET", "spot").lower()
+        mode = env.get("BOT_MODE", "paper").lower()
+        testnet = env.get("DELTA_TESTNET", "1")
+        if chosen not in {"trend", "ensemble", "ml"}:
+            raise ValueError("STRATEGY must be trend, ensemble or ml")
+        if market not in {"spot", "perp"}:
+            raise ValueError("MARKET must be spot or perp")
+        if mode not in {"paper", "shadow", "replay", "live"}:
+            raise ValueError("BOT_MODE must be paper, shadow, replay or live")
+        if testnet not in {"0", "1"}:
+            raise ValueError("DELTA_TESTNET must be exactly 0 or 1")
         if chosen in ("trend", "ensemble"):
             # multi-day holds: daily-scale ATR stop, no time exit, no fixed take-profit
             s = replace(s, strategy=chosen, horizon=96 * 30, stop_atr=2.0, tp_atr=1000.0,
                         risk_per_trade=0.005, max_leverage=2.0, max_positions=2)
-        if os.environ.get("MARKET", "spot").lower() == "spot":
+        if market == "spot":
             # Master-prompt default: spot, long-only, no leverage. Fee levels are ASSUMPTIONS
             # (typical Indian-exchange spot taker ~0.1% + 18% GST) - verify on your exchange's fee page.
             s = replace(s, market="spot", allow_short=False, max_leverage=1.0, funding_per_8h=0.0, min_order_inr=100.0,
                         taker_fee=0.001, maker_fee=0.001, slippage=0.0005, stop_slippage=0.001)
         return enforce_policy(replace(
             s,
-            mode=os.environ.get("BOT_MODE", "paper").lower(),
-            start_equity=float(os.environ.get("START_EQUITY_USD", s.start_equity)),
-            usdt_inr=float(os.environ.get("USDT_INR", s.usdt_inr)),
-            testnet=os.environ.get("DELTA_TESTNET", "1") == "1",
-            risk_per_trade=float(os.environ.get("RISK_PER_TRADE", s.risk_per_trade)),
-            max_positions=int(os.environ.get("MAX_POSITIONS", s.max_positions)),
-            daily_loss_limit=float(os.environ.get("DAILY_LOSS_LIMIT", s.daily_loss_limit)),
-            weekly_loss_limit=float(os.environ.get("WEEKLY_LOSS_LIMIT", s.weekly_loss_limit)),
-            monthly_loss_limit=float(os.environ.get("MONTHLY_LOSS_LIMIT", s.monthly_loss_limit)),
-            max_es_pct=float(os.environ.get("MAX_ES_PCT", s.max_es_pct)),
+            mode=mode,
+            start_equity=float(env.get("START_EQUITY_USD", s.start_equity)),
+            usdt_inr=float(env.get("USDT_INR", s.usdt_inr)),
+            testnet=testnet == "1",
+            risk_per_trade=float(env.get("RISK_PER_TRADE", s.risk_per_trade)),
+            max_positions=int(env.get("MAX_POSITIONS", s.max_positions)),
+            daily_loss_limit=float(env.get("DAILY_LOSS_LIMIT", s.daily_loss_limit)),
+            weekly_loss_limit=float(env.get("WEEKLY_LOSS_LIMIT", s.weekly_loss_limit)),
+            monthly_loss_limit=float(env.get("MONTHLY_LOSS_LIMIT", s.monthly_loss_limit)),
+            max_es_pct=float(env.get("MAX_ES_PCT", s.max_es_pct)),
         ))
 
 
@@ -152,4 +168,8 @@ def enforce_policy(s: "Settings") -> "Settings":
            if not (0 < getattr(s, k) <= cap)]
     if bad:
         raise ValueError("risk settings outside policy, refusing to start: " + "; ".join(bad))
+    for name in ("start_equity", "usdt_inr"):
+        value = getattr(s, name)
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be finite and positive")
     return s

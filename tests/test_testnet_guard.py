@@ -3,6 +3,16 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+
+def test_delta_broker_rejects_spot_before_network_or_credentials(monkeypatch):
+    from bot.broker.delta import DeltaBroker, LiveTradingNotAllowed
+    from bot.config import Settings
+
+    monkeypatch.setenv("BOT_MODE", "live")
+    monkeypatch.setenv("I_UNDERSTAND_LIVE_RISK", "yes")
+    with pytest.raises(LiveTradingNotAllowed, match="perpetual"):
+        DeltaBroker(Settings(market="spot"))
+
 from bot.config import MAINNET_API, TESTNET_API, Settings
 from bot.testnet_check import EXPECTED_STEPS, Checklist, TestnetOnly, guard, passed_recently, write_report
 
@@ -22,6 +32,14 @@ def test_report_records_every_step_and_no_secrets(tmp_path, monkeypatch):
     assert rep["all_passed"] and rep["endpoint"] == TESTNET_API and len(rep["steps"]) == len(EXPECTED_STEPS)
     assert "KEY123" not in p.read_text() and "SECRET456" not in p.read_text()
     assert passed_recently(p)
+
+
+def test_pre_adapter_change_testnet_report_is_not_current_evidence(tmp_path):
+    p = write_report(full_checklist(), Settings(testnet=True), cleanup_ok=True, path=tmp_path / "t.json")
+    rep = json.loads(p.read_text())
+    rep.pop("execution_version", None)
+    p.write_text(json.dumps(rep))
+    assert not passed_recently(p)
 
 
 def test_failed_step_error_or_cleanup_is_not_a_pass(tmp_path):

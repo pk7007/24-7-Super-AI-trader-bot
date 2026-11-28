@@ -1,4 +1,88 @@
-# Audit report - 2026-11-26, re-scored after the code fixes (supersedes the 2026-11-24 version; `AUDIT.md` kept for history)
+# Audit report — 2026-11-28
+
+**Latest full audit: [FULL_AUDIT_2026-11-28.md](FULL_AUDIT_2026-11-28.md), 5.1/10 engineering / 41 readiness, NO-GO for live money.** It supersedes the earlier scoped audit below: 378 Python tests passed on Windows and Linux, 25 frontend tests passed, advisory scans and container/browser checks completed. The running bots were not restarted.
+
+## Earlier scoped audit — retained for provenance
+
+**Decision: NO-GO for live capital. Current engineering audit: 4.7/10 (weighted 4.66).** This replaces the older 5.8 assessment below. The lower score reflects newly exposed backtest inconsistencies and stricter treatment of missing evidence, despite the fixes. Scores are engineering judgments, not probabilities of success. The master prompt's 9/10 exit conditions are not met.
+
+The separate evidence-based readiness scorer is now **44/100, DEVELOPMENT ONLY** (previously 56). Twelve points from obsolete simulation reports are no longer credited. This scorer uses the completed 278-test XML via `C:/tb/scratch/audit_readiness_20261128.py`; reports and LIVE_TRADING_READINESS.md were refreshed without running another suite. Paper and shadow each have **zero completed trades**; roughly four calendar days since the first log is not four days of continuous uptime.
+
+## Scope and evidence
+
+Reviewed local `main` against GitHub `pk7007/24-7-Super-AI-trader-bot`, commit `e8cb6c6a03633bfde550c69c396193bee0e9c843`. At inspection, GitHub had no open PRs and no Actions runs; no workflow is tracked. Changes from this audit are local and uncommitted. Credentials were not inspected; running bots and scheduled tasks were not restarted or changed.
+
+- Full offline Python suite: **278 passed**, with one Starlette/httpx deprecation warning. Evidence: `reports/audit_tests.xml`. Windows sandbox loopback prevents asyncio's internal socket pair from starting; the suite passed outside that restriction, with dotenv loading and external socket connections disabled by fixtures.
+- Frontend: **23 passed**, TypeScript check and production build passed. No browser E2E or accessibility audit was performed.
+- Independent reviewers reproduced bugs, reviewed fixes, and checked risk/quantitative implications. The first protective-exit patch had a restart accounting gap; it was fixed and independently re-reviewed.
+- Cached-data reruns: all five lab candidates at 0.10% and 0.50% fees, plus an isolated seven-day full-engine replay. Outputs: `reports/audit_20261128/`; reproduction script: `C:/tb/scratch/audit_research_20261128.py`. No new data download or fresh holdout. Older trial history was excluded from that isolated folder, so its DSR cannot represent all historical trials.
+
+## Fixed findings
+
+| Priority | Finding | Fix and evidence |
+|---|---|---|
+| P1 | Restore could escape its target on Windows; contents were not verified before writing | Exact archive/manifest allowlist, preflight integrity checks, destination containment; unsafe-path and tampering regressions in `test_backup.py` |
+| P1 | Missing stops and entry-ledger failures could leave positions unprotected | Stop before ledger; repair-or-flatten on startup/candle/monitor; emergency exits retried, entries blocked, stops/state retained until flat; nine failure/restart drills in `test_stop_recovery.py` |
+| P1 | Interrupted entry accounting could silently resume after restart | Persistent accounting halt; overview exposes it. Operator ledger reconciliation remains required |
+| P1 | Spot configuration reached Delta's perpetual adapter | Adapter rejects non-perpetual profile before credentials/network construction; guard regression |
+| P1 | Spot backtest and replay used perpetual lot sizes; backtest omitted INR minimum orders | Market-specific lot defaults, explicit overrides preserved, minimum gate matches runtime; direct backtest/feed regressions. Old tables are historical |
+| P2 | Obsolete lab outputs could continue earning readiness points | Future lab outputs record the simulation version; scorer rejects old/unversioned evidence, with regression. This audit's isolated reruns finished before the metadata addition and receive no readiness credit |
+| P2 | Failed/empty backup drill could report success; retention flag ignored | Nonzero failure exit, empty backups rejected, retention forwarded/validated; invalid new backups do not rotate valid recovery points; atomic ZIP publication and collision refusal |
+| P2 | Malformed heartbeat status broke monitoring; future timestamps counted as recent | Defensive status parsing and nonnegative evidence age; offline failure tests |
+| P2 | Log mtime made error loops look healthy | Compose now checks a recent successful candle, rejecting errors/no-data/future/stale events; five health tests. Docker execution remains unverified |
+| P2 | Raw SQLite URIs broke on paths containing `#` | Proper file-URI encoding for backup/API/risk readers; special-character backup drill regression |
+| P2 | API tests depended on the user's files and weakly allowed writes | Isolated fixtures and exact before/after state equality; tests do not load dotenv or contact external services |
+
+## Corrected development backtests
+
+Spot, long-only, 1x; $113.60 starting equity, existing cached Binance candles, current configured costs/risk defaults. No strategy was switched or promoted into runtime.
+
+| Ensemble | Return | Max drawdown | Profit factor | Trades | Isolated-trial DSR |
+|---|---:|---:|---:|---:|---:|
+| 0.10% fee per side, GST/slippage included | +23.92% | -6.94% | 2.02 | 108 | 0.000 |
+| 0.50% fee per side, GST/slippage included | +12.20% | -7.29% | 1.49 | 106 | 0.000 |
+
+These are development backtests, not earned profit. The lab's robustness gate passes both, but the stress profit factor is below the paper benchmark of 1.5. The simulator still lacks the engine's aggregate exposure/portfolio expected-shortfall veto and checks loss switches at candle close. A replay without trades cannot establish order-path parity. Historical holdouts must not be silently reused as new untouched evidence after this modeling correction.
+
+The corrected seven-day replay covers **2026-11-17 00:15 UTC to 2026-11-24 00:15 UTC**: zero fills, zero open positions, simulated equity unchanged at $113.60. It is a cached-data engine exercise, not live forward evidence.
+
+## Current weighted audit
+
+| Domain | Weight | Score / 10 | Evidence and missing verification |
+|---|---:|---:|---|
+| Quantitative strategy quality | 10% | 3 | Corrected backtests; DSR zero; no adequate forward sample |
+| AI / machine learning | 8% | 4 | Tested challenger rejection pipeline; no demonstrated ML advantage |
+| Market data quality | 8% | 4 | Feed/closed-candle tests; cached data and known outage; current 99.9% coverage not proven |
+| Backtesting and statistics | 12% | 5 | Lot/minimum regression and full reruns; missing portfolio parity/fresh holdout |
+| Risk management | 15% | 7 | Passing risk, ES, stop-recovery and kill-switch tests; no live-money drill |
+| Execution reliability | 10% | 4 | Offline failure drills and recorded testnet run; no spot adapter |
+| Portfolio management | 5% | 4 | Tested ES/exposure veto; limited diversification and allocation |
+| Security | 7% | 5 | Secret/network test isolation, restore preflight, live gate; key scope and fresh dependency scan not verified |
+| Regulatory and tax | 5% | 0 | No professional confirmation in this audit; estimates are not certification |
+| Infrastructure | 5% | 5 | Backup/recovery tests; PC sleep/power risk, same-disk backups, Docker unbuilt |
+| Testing and verification | 5% | 7 | Python/frontend checks pass; no browser or container E2E |
+| Monitoring and analytics | 3% | 5 | Heartbeat/health regressions; shared outside check can mask one failed bot |
+| User interface | 2% | 6 | Unit/type/build checks and accounting-halt API visibility; no browser verification |
+| Cost efficiency | 3% | 5 | No paid services added; no fresh cost benchmark (testless-domain cap) |
+| Documentation | 2% | 5 | Current caveats reconciled; historical reports retained; testless-domain cap |
+| **Weighted total** | **100%** | **4.66 → 4.7** | Independent reviewer checked arithmetic and testless-domain caps |
+
+## Remaining work and activation
+
+1. No verified spot venue/adapter with exchange-side stops and suitable key scope. Delta is perpetual-only; this audit does not authorize derivatives or real orders.
+2. Insufficient forward trades/regimes and uptime evidence. The readiness scorer's 60-day/300-trade gate is stricter than the master prompt's 30-day/100-trade benchmark; retain the stricter gate.
+3. Professional tax/exchange eligibility confirmation is missing.
+4. Docker build/soak, always-on deployment, off-device recovery and distinct per-bot outside monitors remain unverified.
+5. API settings construction still mutates process-wide environment (`sources.run_cfg`), a concurrent-read isolation issue. CI enforcement is absent. Deferred; neither is a reason to permit live trading.
+6. Exactly-once durable fill/accounting recovery is not implemented. A persisted accounting halt deliberately requires operator reconciliation; do not clear it merely to resume trading.
+
+The running processes retain their already-loaded code. These fixes need a controlled restart to take effect; no restart or deployment was performed. No commit or push was made. The master prompt remains unchanged, and the 9/10 objective stays unmet because required external/forward evidence is missing.
+
+---
+
+## Historical audit — retained for provenance (not current)
+
+The following scores/results predate the modeling and reliability findings above.
 
 **Decision: NOT READY for live capital. Paper trading only.**
 Weighted score **5.8 / 10** (4.4 on 2026-11-24, 5.2 on the morning of 11-26, 5.7 after the testnet pass). Readiness scorer (`python -m bot.readiness`): **56/100, DEVELOPMENT ONLY** (was 43, then 50, then 53 after the testnet pass; 56 once heartbeat pings were delivered).

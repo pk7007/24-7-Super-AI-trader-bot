@@ -34,11 +34,10 @@ def iso(dt: datetime | None) -> str | None:
 
 
 def run_cfg(mode: str = "paper") -> Settings:
-    """The settings the running bots use: same env as run_bot.cmd / docker-compose (ensemble, spot)."""
-    os.environ.setdefault("STRATEGY", "ensemble")
-    os.environ.setdefault("MARKET", "spot")
-    os.environ["BOT_MODE"] = mode
-    return Settings.from_env()
+    """Infer the launcher profile without reading dotenv; this is not a running-process attestation."""
+    snapshot = {**os.environ, "STRATEGY": "ensemble", "MARKET": "spot", "BOT_MODE": mode,
+                "START_EQUITY_USD": "113.6"}
+    return Settings.from_env(environ=snapshot, read_dotenv=False)
 
 
 def bot_symbol(cfg: Settings, base: str) -> str:
@@ -104,7 +103,7 @@ def paper_account(mode: str) -> dict:
 
 
 def _ro(db: Path) -> sqlite3.Connection:
-    con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True, timeout=5)
+    con = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
     con.row_factory = sqlite3.Row
     return con
 
@@ -112,7 +111,8 @@ def _ro(db: Path) -> sqlite3.Connection:
 def db_read(mode: str) -> dict:
     """Positions, fills and kill-switch keys from state.db, opened read-only (the engine keeps writing)."""
     db = ROOT / "state" / mode / "state.db"
-    res = {"availability": "missing", "positions": [], "fills": [], "kv": {}, "source": f"state/{mode}/state.db"}
+    res = {"availability": "missing", "positions": [], "fills": [], "kv": {}, "fill_count": None,
+           "realized_pnl": None, "source": f"state/{mode}/state.db"}
     if not db.exists():
         return res
     try:
@@ -120,6 +120,8 @@ def db_read(mode: str) -> dict:
         try:
             res["positions"] = [dict(r) for r in con.execute("SELECT * FROM positions")]
             res["fills"] = [dict(r) for r in con.execute("SELECT * FROM fills ORDER BY id DESC LIMIT 1000")]
+            totals = con.execute("SELECT COUNT(*), COALESCE(SUM(realized_pnl), 0) FROM fills").fetchone()
+            res["fill_count"], res["realized_pnl"] = int(totals[0]), float(totals[1])
             res["kv"] = {r["key"]: r["value"] for r in con.execute("SELECT key, value FROM kv")}
         finally:
             con.close()
@@ -162,16 +164,35 @@ def _switch(kv: dict, prefix: str, limit: float, equity: float | None) -> dict:
             "halted": {"1": True, "0": False}.get(kv.get(f"{prefix}_halted"))}
 
 
+def _completed_steps(mode: str) -> list[tuple[dict, datetime]]:
+    completed = []
+    for event in read_log(mode):
+        if event["logger"] != "engine" or not event["message"].startswith("step complete candle "):
+            continue
+        try:
+            candle = datetime.fromisoformat(event["message"].removeprefix("step complete candle "))
+            if candle.tzinfo is None:
+                continue
+        except ValueError:
+            continue
+        completed.append((event, candle))
+    return completed
+
+
 def heartbeat(mode: str) -> dict:
-    ev = candle_events(mode)
-    last = ev[-1] if ev else None
-    if not last:
-        return {"status": "unknown", "last_candle_logged_utc": None, "age_min": None, "threshold_min": HEARTBEAT_MAX_MIN}
-    ts = datetime.fromisoformat(last["logged_utc"])
-    age = (now_utc() - ts).total_seconds() / 60
-    return {"status": "alive" if age <= HEARTBEAT_MAX_MIN else "stale", "last_candle_logged_utc": last["logged_utc"],
+    completed = _completed_steps(mode)
+    if not completed:
+        return {"status": "unknown", "last_candle_logged_utc": None, "age_min": None,
+                "threshold_min": HEARTBEAT_MAX_MIN, "step_completed": False}
+    event, candle = completed[-1]
+    ages = [(now_utc() - t).total_seconds() / 60 for t in (event["ts"], candle)]
+    age = max(ages)
+    diagnostic = candle_events(mode)
+    last = diagnostic[-1] if diagnostic else {}
+    return {"status": "alive" if all(0 <= a <= HEARTBEAT_MAX_MIN for a in ages) else "stale",
+            "last_candle_logged_utc": iso(event["ts"]), "completed_candle_utc": iso(candle), "step_completed": True,
             "age_min": round(age, 1), "threshold_min": HEARTBEAT_MAX_MIN,
-            "last_decisions": last["decisions"], "last_no_data": last["no_data"]}
+            "last_decisions": last.get("decisions", {}), "last_no_data": last.get("no_data")}
 
 
 def mode_overview(mode: str) -> dict:
@@ -182,20 +203,22 @@ def mode_overview(mode: str) -> dict:
     switches = {"daily": _switch(kv, "ks", cfg.daily_loss_limit, eq),
                 "weekly": _switch(kv, "ksw", cfg.weekly_loss_limit, eq),
                 "monthly": _switch(kv, "ksm", cfg.monthly_loss_limit, eq)}
-    fills = db["fills"]
-    realized = sum(float(f["realized_pnl"]) for f in fills) if db["availability"] == "ok" else None
+    realized = db["realized_pnl"] if db["availability"] == "ok" else None
     open_risk = sum(abs(p["entry"] - p["stop"]) * p["contracts"] * _unit(p["symbol"], cfg) for p in db["positions"])
     return {
         "mode": mode, "simulated": True,
+        "configuration_source": "inferred launcher profile and API environment; runtime dotenv overrides are unverified",
         "heartbeat": heartbeat(mode),
         "equity": {"value": eq, "currency": "USD", "basis": "paper cash (open positions valued at entry)",
                    "start_equity": cfg.start_equity, "availability": acct["availability"],
                    "updated_utc": acct.get("updated_utc")},
-        "realized_pnl": realized, "fill_count": len(fills) if db["availability"] == "ok" else None,
+        "realized_pnl": realized, "fill_count": db["fill_count"] if db["availability"] == "ok" else None,
         "open_positions": len(db["positions"]) if db["availability"] == "ok" else None,
         "open_risk_usd": round(open_risk, 6) if db["availability"] == "ok" else None,
         "kill_switches": switches,
-        "entries_halted": any(s["halted"] for s in switches.values()) if db["availability"] == "ok" else None,
+        "entries_halted": (any(s["halted"] for s in switches.values())
+                           or kv.get("safety_accounting_halted") == "1") if db["availability"] == "ok" else None,
+        "accounting_halted": kv.get("safety_accounting_halted") == "1" if db["availability"] == "ok" else None,
         "db_availability": db["availability"],
     }
 
@@ -236,6 +259,8 @@ def risk_view() -> dict:
             "Project safety rule 4 names 3%; the master prompts set 1%. Human review needed.")
     from ..risk import round_trip_cost_pct
     return {"effective": eff, "policy_ceiling": POLICY_CEILING, "discrepancies": discrepancies,
+            "configuration_source": "inferred launcher profile and API environment; runtime dotenv overrides are unverified",
+            "runtime_configuration_verified": False,
             "round_trip_cost_pct": round(round_trip_cost_pct(cfg) * 100, 4),
             "protections": [
                 {"name": "Exchange-side stop on every entry", "status": "enforced in engine (paper broker simulates it)",
@@ -254,15 +279,24 @@ def risk_view() -> dict:
 
 
 # ------------------------------------------------------------------ reports
-POLICY = dict(risk_per_trade=0.005, max_positions=2)
+POLICY = dict(risk_per_trade=0.005, max_positions=2, daily_loss_limit=0.01,
+              weekly_loss_limit=0.03, monthly_loss_limit=0.05, max_leverage=1)
 
 
 def _classify_report(d: dict) -> str:
+    from ..backtest import SIMULATION_VERSION
+    if d.get("simulation_version") != SIMULATION_VERSION:
+        return "historical: obsolete or unrecorded simulation version"
+    if d.get("market") != "spot" or d.get("allow_short") is not False:
+        return "historical: different or unrecorded market profile"
     cands = d.get("candidates", {})
-    cfgs = [c.get("effective_config") for c in cands.values() if c.get("effective_config")]
-    if not cfgs:
+    if not isinstance(cands, dict) or not cands or not all(isinstance(c, dict) for c in cands.values()):
+        return "historical: candidate configuration missing or invalid"
+    cfgs = [c.get("effective_config") for c in cands.values()]
+    if not all(isinstance(c, dict) and c for c in cfgs):
         return "historical: risk settings not recorded (pre-2026-11-24, mostly 1% risk / 3 positions)"
-    if all(c["risk_per_trade"] <= POLICY["risk_per_trade"] and c["max_positions"] <= POLICY["max_positions"] for c in cfgs):
+    if all(all(isinstance(c.get(k), (int, float)) and not isinstance(c.get(k), bool)
+               and math.isfinite(c[k]) and 0 < c[k] <= cap for k, cap in POLICY.items()) for c in cfgs):
         return "current policy"
     return "looser than current policy"
 
@@ -276,7 +310,7 @@ def lab_reports() -> list[dict]:
             d = json.loads(p.read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001
             continue
-        if "candidates" not in d:
+        if not isinstance(d, dict) or not isinstance(d.get("candidates"), dict):
             continue
         out.append({"tag": p.stem, "window": d.get("window"), "market": d.get("market"), "taker_fee": d.get("taker_fee"),
                     "classification": _classify_report(d), "buy_and_hold_pct": d.get("buy_and_hold_pct"),
@@ -297,10 +331,11 @@ def strategies() -> dict:
         old = (base or {}).get("candidates", {}).get(name)
         src = cur or old
         rows.append({"id": name, "label": label,
-                     "status": ("PAPER (running, promoted by lab gate)" if name == "ensemble" else
-                                ("passed gate (not deployed)" if src and src.get("promote") else "rejected by lab gate")),
+                     "status": ("not evaluated" if src is None else
+                                ("passed lab gate (deployment not inferred)" if src.get("promote") else "rejected by lab gate")),
                      "evidence_tag": "lab_spot_policy_mp2" if cur else ("lab_spot" if old else None),
-                     "evidence_policy": "current policy" if cur else "historical (looser risk)",
+                     "evidence_policy": (rep["classification"] if cur and rep else
+                                         (base["classification"] if old and base else "missing evidence")),
                      "metrics": src.get("full") if src else None,
                      "monte_carlo": src.get("monte_carlo") if src else None,
                      "subperiod_returns_pct": src.get("subperiod_returns_pct") if src else None,
@@ -421,8 +456,20 @@ def candles(base: str, limit: int = 300, source: str = "live") -> dict:
 
 
 # ------------------------------------------------------------------ health / events
+def _redact_log_message(message: str) -> str:
+    """Scrub credential-shaped log fields without loading or inspecting stored credentials."""
+    message = re.sub(r"(?i)(\bauthorization[\"']?\s*[:=]\s*[\"']?)(?:bearer\s+|basic\s+)?[^\s,;\"']+",
+                     r"\1[REDACTED]", message)
+    field = (r"(?i)(\b(?:[a-z0-9]+_)*(?:api[_-]?key|api[_-]?secret|secret|token|password|passphrase|signature)"
+             r"[\"']?\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;&}]+)")
+    message = re.sub(field, r"\1[REDACTED]", message)
+    message = re.sub(r"(?i)(https?://api\.telegram\.org/bot)[^/\s]+", r"\1[REDACTED]", message)
+    message = re.sub(r"(?i)(https?://)[^/@\s]+:[^/@\s]+@", r"\1[REDACTED]@", message)
+    return message
+
+
 def events(mode: str, limit: int = 200) -> list[dict]:
-    out = [{"ts_utc": iso(e["ts"]), "level": e["level"], "logger": e["logger"], "message": e["message"][:400]}
+    out = [{"ts_utc": iso(e["ts"]), "level": e["level"], "logger": e["logger"], "message": _redact_log_message(e["message"])[:400]}
            for e in read_log(mode) if not (e["logger"] == "engine" and e["message"].startswith("candle "))]
     return out[-limit:][::-1]
 
@@ -434,7 +481,9 @@ def health() -> dict:
         ev = read_log(m)
         day_ago = now_utc() - timedelta(hours=24)
         recent = [e for e in ev if e["ts"] >= day_ago]
-        candles_24h = [e for e in recent if e["logger"] == "engine" and e["message"].startswith("candle ")]
+        observed = now_utc()
+        candles_24h = {candle for event, candle in _completed_steps(m)
+                       if day_ago <= event["ts"] <= observed and day_ago <= candle <= observed}
         db = db_read(m)
         starts = [iso(e["ts"]) for e in ev if "entering main loop" in e["message"]]
         out[m] = {

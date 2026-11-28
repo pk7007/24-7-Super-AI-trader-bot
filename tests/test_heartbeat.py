@@ -2,6 +2,7 @@
 
 import json
 import logging
+import pytest
 
 from bot.heartbeat import Pacer, ping, recent_ok
 
@@ -129,3 +130,19 @@ def test_only_https_is_accepted(tmp_path, monkeypatch):
     monkeypatch.setenv("HEARTBEAT_URL", "http://insecure.example/x")
     op = Opener()
     assert ping(tmp_path / "hb.json", opener=op) is False and op.urls == []
+
+
+@pytest.mark.parametrize("previous", [[], None, {"fails": "bad"}, {"fails": None}])
+def test_malformed_status_cannot_prevent_recording_network_failure(tmp_path, monkeypatch, previous):
+    monkeypatch.setenv("HEARTBEAT_URL", URL)
+    status = tmp_path / "hb.json"
+    status.write_text(json.dumps(previous))
+    assert ping(status, opener=Opener(fail=True)) is False
+    assert json.loads(status.read_text())["fails"] == 1
+
+
+def test_future_heartbeat_is_not_recent_evidence(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    status = tmp_path / "hb.json"
+    status.write_text(json.dumps({"last_ok_utc": (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()}))
+    assert not recent_ok(status)

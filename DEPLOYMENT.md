@@ -1,8 +1,8 @@
 # Deployment
 
-**Today:** the paper bot runs as a plain Python process on a Windows PC (`python -m bot.main paper`). It stops if the PC sleeps or reboots.
+**Today:** paper and shadow run on the Windows PC, restarted by the scheduled launchers below. Sleep and power loss still interrupt both.
 
-**Docker (written, NOT built or run):** `Dockerfile` + `docker-compose.yml` run the same command with `restart: unless-stopped`, secrets from `.env`, state in mounted folders, UTC timezone. Build and a 48 h soak test are required before trusting it.
+**Docker:** `Dockerfile` + `docker-compose.yml` define paper/shadow with `restart: unless-stopped`, state in mounted folders, UTC timezone and pinned dependencies. They do not load `.env` or need exchange keys. See AUDIT_REPORT.md for build/smoke evidence; a 48-hour always-on soak remains a separate requirement.
 
 **Hosting options (prices unverified):** an always-free cloud VM (e.g. Oracle, Mumbai/Hyderabad) for paper/testnet; a small paid VPS with a static IP for anything live (the exchange API key's IP whitelist needs a fixed IP).
 
@@ -29,22 +29,23 @@
 ## 24/7 on a cloud server (prepared 2026-11-24, not yet deployed)
 The PC setup above stops when the PC sleeps or you log out. A small Linux server runs around the clock. Everything below is paper and shadow only; no exchange keys go to the server.
 
-**What is ready:** `docker-compose.yml` (two containers, `paper` and `shadow`, `restart: unless-stopped`, heartbeat health checks, no `.env` loaded), `.dockerignore` (keeps `.env` and state out of the image), `deploy/setup_vps.sh` (one-command server setup), `deploy/make_bundle.sh` (upload bundle, refuses to include `.env`). The bundle's 57 tests pass from a clean copy.
-**What is NOT verified:** the Docker image has never been built (Docker Desktop cannot run on this PC: WSL has no Linux installed). The first build will happen on the server; watch its output.
+**What is ready:** `docker-compose.yml` (paper/shadow only, restart policy, completed-step health checks, no `.env` loaded), `.dockerignore`, `deploy/setup_vps.sh`, and `deploy/make_bundle.py` / its Bash wrapper. The bundler excludes credentials and holds both bot locks during state migration. The full offline suite and a Docker build/network-disabled smoke check were exercised in the full audit; exact results are in AUDIT_REPORT.md.
+**What is NOT verified:** deployment on your chosen server, its market-data connectivity and a 48-hour always-on soak. A local image build and import smoke check do not prove production uptime.
 
 ### Steps (you do 1-2; the rest is copy-paste)
 1. Create a free cloud account (for example Oracle Cloud "Always Free", home region Mumbai or Hyderabad). This needs your identity and card for verification; I cannot do it for you.
 2. Create a VM: Ubuntu 24.04, shape "VM.Standard.A1.Flex" (ARM, free; 1 OCPU / 6 GB is plenty) or "VM.Standard.E2.1.Micro". Download the SSH private key it offers. Note the public IP. Free ARM capacity is sometimes "out of capacity"; retry later or use the E2 micro.
-3. On this PC, **stop the local bots first** so the paper account does not fork into two copies:
-   `Stop-ScheduledTask -TaskName IndiaCryptoBot-paper; Stop-ScheduledTask -TaskName IndiaCryptoBot-shadow`
+3. On this PC, **disable the paper/shadow restart tasks first**, then stop the actual bot processes so the account cannot fork:
+   `Disable-ScheduledTask -TaskName IndiaCryptoBot-paper; Disable-ScheduledTask -TaskName IndiaCryptoBot-shadow`
+   `Stop-ScheduledTask` only stops the short-lived launcher; it does not stop the already-running Python bots. List the paper/shadow Python PIDs, confirm they belong to this project, and stop those confirmed PIDs (both the venv launcher and child). Do not stop unrelated Python processes or the backup task. Recheck that neither bot remains running.
    then build the bundle with the current state (Git Bash, in `C:	b\india-crypto-ai-bot`):
    `bash deploy/make_bundle.sh --with-state`
+   Activate the project Python environment first, or set `PYTHON` to its executable. PowerShell can instead run `C:\tb\venv\Scripts\python.exe deploy\make_bundle.py --with-state`. The bundler refuses state migration while either bot's lock is held and holds both locks throughout archiving. Keep the PC launchers disabled afterwards: lock files cannot prevent a copy on another machine.
 4. Upload and install (PowerShell; replace KEY and IP):
    `scp -i KEY deploy/bundle.tar.gz ubuntu@IP:~/`
    `ssh -i KEY ubuntu@IP "tar xzf bundle.tar.gz -C ~/ && sudo bash ~/india-crypto-ai-bot/deploy/setup_vps.sh"`
 5. Check it is alive (after about 20 minutes): `ssh -i KEY ubuntu@IP "cd ~/india-crypto-ai-bot && sudo docker compose ps && tail -n 3 state/paper.log"`. You want both containers "healthy" and a fresh `candle ... | equity` line.
-6. Only when the server is confirmed healthy, disable the PC tasks so they cannot restart at your next logon:
-   `Disable-ScheduledTask -TaskName IndiaCryptoBot-paper; Disable-ScheduledTask -TaskName IndiaCryptoBot-shadow`
+6. Confirm the PC launchers remain disabled. If migration fails, stop both server services first and reconcile which state is authoritative before re-enabling any PC launcher. Never resume both copies.
 
 ### Risks and checks
 * **Market data access:** signals use Binance's public API. Some providers' IP ranges are blocked by some exchanges. If the logs show repeated fetch errors, the bot will stay in cash (fail-safe), but no forward evidence accrues; report it.

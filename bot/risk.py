@@ -24,7 +24,7 @@ def round_trip_cost_pct(cfg: Settings) -> float:
 def position_units(equity: float, price: float, atr_pct: float, cfg: Settings) -> float:
     """Base-asset units so that hitting the stop loses at most ``risk_per_trade`` of equity
     INCLUDING fees and slippage (a stop-out pays both legs), capped by ``max_leverage``."""
-    if equity <= 0 or price <= 0 or not atr_pct or atr_pct != atr_pct or atr_pct <= 0:
+    if not all(math.isfinite(v) and v > 0 for v in (equity, price, atr_pct)):
         return 0.0
     stop_dist = cfg.stop_atr * atr_pct
     notional = equity * cfg.risk_per_trade / (stop_dist + round_trip_cost_pct(cfg))
@@ -34,6 +34,8 @@ def position_units(equity: float, price: float, atr_pct: float, cfg: Settings) -
 
 def to_contracts(units: float, contract_size: float, min_contracts: float = 1.0) -> int:
     """Exchange contracts are integers; round DOWN so risk is never exceeded."""
+    if not all(math.isfinite(v) and v > 0 for v in (units, contract_size, min_contracts)):
+        return 0
     n = math.floor(units / contract_size)
     return n if n >= min_contracts else 0
 

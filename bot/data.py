@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import ccxt
+import numpy as np
 import pandas as pd
 
 from .config import Settings
@@ -93,6 +94,9 @@ def validate_candles(df: pd.DataFrame, max_move: float = 0.25) -> tuple[pd.DataF
     """Drop structurally impossible candles; return (clean_frame, rows_dropped)."""
     px = df[["open", "high", "low", "close"]]
     bad = (px <= 0).any(axis=1) | (df["high"] < df["low"]) | (df["volume"] < 0)
+    bad |= ~np.isfinite(df[COLUMNS]).all(axis=1)
+    bad |= ((df["open"] > df["high"]) | (df["open"] < df["low"])
+            | (df["close"] > df["high"]) | (df["close"] < df["low"]))
     bad |= (df["close"].pct_change().abs() > max_move) | ((df["high"] / df["low"] - 1) > max_move)
     return df[~bad], int(bad.sum())
 
