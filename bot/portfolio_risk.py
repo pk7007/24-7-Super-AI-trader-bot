@@ -14,6 +14,7 @@ These checks can only block an entry; they never open, resize or close a positio
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Callable
 
 import pandas as pd
@@ -51,6 +52,8 @@ def es_var(values: dict[str, float], rets: pd.DataFrame, alpha: float = 0.975) -
 def check_entry(held: dict[str, float], sym: str, value: float, equity: float,
                 daily_closes: Callable[[str, int], pd.Series], cfg: Settings) -> Verdict:
     """``held`` and ``value`` are signed USD position values. Returns whether the entry may proceed."""
+    if not all(math.isfinite(v) for v in (equity, value, *held.values())) or equity <= 0:
+        return Verdict(False, "nonfinite or invalid equity/exposure; entry refused")
     gross = sum(abs(v) for v in held.values()) + abs(value)
     if equity <= 0 or gross > cfg.max_leverage * equity * (1 + 1e-9):
         return Verdict(False, f"gross exposure {gross:.2f} > {cfg.max_leverage:g}x equity {equity:.2f}", gross)
@@ -59,12 +62,16 @@ def check_entry(held: dict[str, float], sym: str, value: float, equity: float,
         closes = {s: daily_closes(s, cfg.es_lookback_days) for s in syms}
     except Exception as exc:  # noqa: BLE001 - no history, no entry
         return Verdict(False, f"history unavailable ({type(exc).__name__}); entry refused", gross)
+    if any(s.empty or not all(math.isfinite(v) and v > 0 for v in s) for s in closes.values()):
+        return Verdict(False, "invalid daily history; entry refused", gross)
     rets = daily_returns(closes)
     if len(rets) < MIN_DAYS:
         if cfg.mode == "replay":
             return Verdict(True, f"ES check skipped: only {len(rets)} days of history (replay)", gross)
         return Verdict(False, f"only {len(rets)} days of history (< {MIN_DAYS}); entry refused", gross)
     var99, es = es_var({**held, sym: value}, rets)
+    if not all(math.isfinite(v) for v in (var99, es)):
+        return Verdict(False, "nonfinite portfolio risk; entry refused", gross)
     corr = {h: round(float(rets[sym].corr(rets[h])), 2) for h in held}
     if es > cfg.max_es_pct * equity:
         return Verdict(False, f"1-day expected shortfall {es:.2f} > {cfg.max_es_pct:.1%} of equity "

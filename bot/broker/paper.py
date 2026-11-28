@@ -91,8 +91,9 @@ class PaperBroker(Broker):
         if symbol not in self.s["positions"]:  # reduce-only stops die with the position
             for i in [i for i, o in self.s["stops"].items() if o["symbol"] == symbol]:
                 del self.s["stops"][i]
+        oid = self._next_id()
         fill = Fill(self.feed.now().isoformat(), symbol, side, contracts, px, fee, realized,
-                    reason, self._next_id())
+                    reason, oid, fill_id=f"paper:{oid}")
         return fill
 
     def market_order(self, symbol, side, contracts, reduce_only=False, reason="") -> Fill | None:
@@ -138,8 +139,15 @@ class PaperBroker(Broker):
         self._save()
 
     def drain_fills(self) -> list[Fill]:
-        out = [Fill(**f) for f in self.s["fills"]]
-        self.s["fills"] = []
-        if out:
-            self._save()
+        out = self.pending_fills()
+        for f in out:
+            self.ack_fill(f)
         return out
+
+    def pending_fills(self) -> list[Fill]:
+        return [Fill(**{**f, "fill_id": f.get("fill_id") or f"paper:{f['order_id']}"}) for f in self.s["fills"]]
+
+    def ack_fill(self, fill: Fill) -> None:
+        self.s["fills"] = [f for f in self.s["fills"]
+                           if (f.get("fill_id") or f"paper:{f['order_id']}") != fill.fill_id]
+        self._save()

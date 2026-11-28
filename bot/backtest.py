@@ -16,11 +16,14 @@ import numpy as np
 import pandas as pd
 
 from .config import Settings
-from .feeds import DEFAULT_CONTRACT_SIZE
+from .feeds import DEFAULT_CONTRACT_SIZE, SPOT_STEP
 from .features import build_features, make_labels
 from .model import PROB_COLUMNS, SignalModel
 from .risk import DailyKillSwitch, position_units, stop_price, to_contracts, tp_price
 from .strategy import decide, should_exit_on_flip
+
+# Increment when execution assumptions change; old reports cannot prove current readiness.
+SIMULATION_VERSION = 3
 
 
 def prepare(cfg: Settings, data: dict[str, pd.DataFrame]):
@@ -80,7 +83,7 @@ class Result:
 
 def simulate(cfg: Settings, data: dict[str, pd.DataFrame], feats, probs, start, end,
              contract_sizes: dict[str, float] | None = None) -> Result:
-    cs_map = contract_sizes or DEFAULT_CONTRACT_SIZE
+    cs_map = contract_sizes if contract_sizes is not None else (SPOT_STEP if cfg.market == "spot" else DEFAULT_CONTRACT_SIZE)
     syms = list(data)
     idx = sorted(set().union(*[set(d.index[(d.index >= start) & (d.index < end)]) for d in data.values()]))
     idx = pd.DatetimeIndex(idx)
@@ -138,6 +141,8 @@ def simulate(cfg: Settings, data: dict[str, pd.DataFrame], feats, probs, start, 
                 n = to_contracts(position_units(mark(i, "open"), px_open, ATR[s][i], cfg), cs)
                 if n <= 0:
                     continue
+                if n * cs * px_open * cfg.usdt_inr < cfg.min_order_inr:
+                    continue
                 entry = px_open * (1 + side * cfg.slippage)
                 units = n * cs
                 fee_in = units * entry * fee_t
@@ -184,7 +189,8 @@ def metrics(cfg: Settings, res: Result) -> dict:
         return {}
     daily = c.resample("1D").last().dropna()
     r = daily.pct_change().dropna()
-    dd = (c / c.cummax() - 1).min()
+    peak = c.cummax().clip(lower=cfg.start_equity)
+    dd = (c / peak - 1).min()
     pnls = np.array([x.pnl for x in t]) if t else np.array([0.0])
     wins, losses = pnls[pnls > 0].sum(), -pnls[pnls < 0].sum()
     by_sym = {}

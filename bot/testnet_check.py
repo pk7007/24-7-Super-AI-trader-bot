@@ -12,12 +12,12 @@ import os
 import tempfile
 import time
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
 
-from .broker.delta import DeltaBroker, require_live_consent
+from .broker.delta import EXECUTION_VERSION, DeltaBroker, require_live_consent
 from .config import ROOT, TESTNET_API, Settings
 from .engine import Engine
 from .feeds import LiveFeed
@@ -38,6 +38,7 @@ def write_report(cl: "Checklist", cfg: Settings, cleanup_ok: bool, error: BaseEx
                  path: Path = REPORT) -> Path:
     """Save the run for the readiness scorer. Order ids and prices only; never keys or error text."""
     rep = {"ran_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"), "endpoint": cfg.api_base,
+           "execution_version": EXECUTION_VERSION,
            "testnet": bool(cfg.testnet), "symbol": SYMBOL,
            "steps": [{"name": n, "passed": ok, "evidence": ev[:300]} for n, ok, ev in cl.results],
            "error": type(error).__name__ if error else None, "cleanup_ok": cleanup_ok,
@@ -54,8 +55,9 @@ def passed_recently(path: Path = REPORT, days: int = 30) -> bool:
         rep = json.loads(Path(path).read_text())
         steps = {s["name"]: s["passed"] for s in rep["steps"]}
         age = datetime.now(timezone.utc) - datetime.fromisoformat(rep["ran_utc"])
-        return (rep["all_passed"] is True and rep["testnet"] is True and rep["endpoint"] == TESTNET_API
-                and all(steps.get(n) is True for n in EXPECTED_STEPS) and age.days < days)
+        return (rep.get("execution_version") == EXECUTION_VERSION
+                and rep["all_passed"] is True and rep["testnet"] is True and rep["endpoint"] == TESTNET_API
+                and all(steps.get(n) is True for n in EXPECTED_STEPS) and timedelta(0) <= age < timedelta(days=days))
     except (OSError, ValueError, KeyError, TypeError):
         return False
 

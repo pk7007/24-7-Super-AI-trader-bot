@@ -1,5 +1,9 @@
 # Backtest report
 
+> **Latest full audit, simulation version3:** the holding horizon is now aligned at30days and drawdown includes initial capital. The repeated ensemble run backtested +22.03% at0.10% fees and +11.41% at0.50%; **the stress robustness gate failed**. See FULL_AUDIT_2026-11-28.md. Version2 and earlier results below are retained as history, not current evidence.
+
+> **2026-11-28 correction:** earlier spot results below used perpetual lot steps and lacked the minimum-INR order gate. Both defects are fixed; those tables are historical. Fresh development-data reruns at $113.60 are documented in AUDIT_REPORT.md (+23.92% base / +12.20% fee stress for ensemble). They are not fresh holdouts, proof of an edge or full parity with runtime portfolio vetoes.
+
 Data: Binance spot 15-minute candles, validated, BTC/ETH/SOL, 2023-01-24 -> 2026-11-24 (134k candles each). Test window 2023-04-29 -> 2026-11-24 (3.6 years, includes the 2023-24 bull, 2025 chop and the 2026 bear). Buy-and-hold over the window: **BTC +109%, ETH -10%, SOL +209%**.
 Engine: `bot/backtest.py` (candle-level, entries at the open of the candle after the signal, stop beats take-profit in the same candle, fees with GST, slippage, stop slippage, 1%-risk sizing, 3% daily kill-switch). Reproduce: `python -m bot.main lab --only trend_ema,donchian,tsmom,ensemble --tag lab_spot`.
 

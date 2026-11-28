@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ..config import ROOT
 from . import sources as s
@@ -59,6 +60,8 @@ app = FastAPI(title="AI Trade Labs observational API", version=SCHEMA_VERSION, d
               redoc_url=None, openapi_url="/api/openapi.json")
 app.add_middleware(CORSMiddleware, allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
                    allow_methods=["GET"], allow_headers=[], allow_credentials=False)
+# Loopback binding alone does not reject attacker-controlled DNS names resolving to loopback.
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"], www_redirect=False)
 
 
 @app.middleware("http")

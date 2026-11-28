@@ -10,7 +10,7 @@ from __future__ import annotations
 import csv
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -70,14 +70,18 @@ def _has(file: str, needle: str) -> bool:
 def _lab(tag: str) -> dict:
     p = ROOT / "reports" / f"{tag}.json"
     try:
-        return json.loads(p.read_text())["candidates"]["ensemble"]
+        from .backtest import SIMULATION_VERSION
+        report = json.loads(p.read_text())
+        if report.get("simulation_version") != SIMULATION_VERSION:
+            return {}
+        return report["candidates"]["ensemble"]
     except Exception:
         return {}
 
 
 def paper_evidence(run_dir: Path | None = None, log: Path | None = None) -> dict:
     run_dir = run_dir or ROOT / "state" / "paper"
-    log = log or ROOT / "state" / "paper_stdout.log"
+    log = log or ROOT / "state" / "paper.log"
     return _forward_evidence(run_dir, log)
 
 
@@ -86,22 +90,42 @@ def shadow_evidence() -> dict:
 
 
 def _forward_evidence(run_dir: Path, log: Path) -> dict:
-    pnl, n = [], 0
+    from .report import round_trips
+    pnl, error = [], None
     led = run_dir / "trades_ledger.csv"
-    if led.exists():
-        with led.open(encoding="utf-8") as fh:
-            for r in csv.DictReader(fh):
-                if float(r["realized_pnl"] or 0) != 0:
-                    pnl.append(float(r["realized_pnl"]))
-        n = len(pnl)
-    days = 0.0
+    try:
+        if led.exists():
+            with led.open(encoding="utf-8") as fh:
+                fills = [{"ts": r["timestamp"], "symbol": r["pair"], "side": r["side"],
+                          "qty": float(r["qty"]), "price": float(r["price"]), "fee": float(r["fee"]),
+                          "realized_pnl": float(r["realized_pnl"]), "reason": r["reason"]}
+                         for r in csv.DictReader(fh)]
+            pnl = [t["net"] for t in round_trips(fills) if t["open_ts"] is not None]
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        error = type(exc).__name__
+    days, calendar_days, candles = 0.0, 0.0, set()
     if log.exists():
-        m = re.search(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}).*engine: candle", log.read_text(errors="ignore"), re.M)
-        if m:
-            start = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M")
-            days = (datetime.now() - start).total_seconds() / 86400
+        now = datetime.now()
+        stamps = []
+        for m in re.finditer(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}).*engine: step complete candle (\S+)\s*$",
+                             log.read_text(errors="ignore"), re.M):
+            stamp = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M")
+            try:
+                candle = datetime.fromisoformat(m.group(2))
+                if candle.tzinfo is None or candle > datetime.now(timezone.utc):
+                    continue
+            except ValueError:
+                continue
+            if stamp <= now:
+                candles.add(candle)
+                stamps.append(stamp)
+        if stamps:
+            calendar_days = max(0.0, (now - min(stamps)).total_seconds() / 86400)
+            days = min(calendar_days, len(candles) / 96)
     gp, gl = sum(x for x in pnl if x > 0), -sum(x for x in pnl if x < 0)
-    return {"completed_trades": n, "days_running": round(days, 2), "profit_factor": (gp / gl) if gl else None}
+    return {"completed_trades": len(pnl), "days_running": round(days, 3), "profit_factor": (gp / gl) if gl else None,
+            "calendar_days": round(calendar_days, 2), "successful_candles": len(candles),
+            "accounting_error": error, "basis": "completed round trips net of all recorded fees; successful candle days"}
 
 
 # ------------------------------------------------------------------ scoring
@@ -115,12 +139,12 @@ def run_tests() -> dict:
     with tempfile.TemporaryDirectory() as d:
         xml = Path(d) / "junit.xml"
         try:
-            subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", f"--junitxml={xml}"],
-                           cwd=ROOT, capture_output=True, timeout=600)
+            process = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", f"--junitxml={xml}"],
+                                     cwd=ROOT, capture_output=True, timeout=600)
             root = ET.parse(xml).getroot()
         except Exception:
             return {}
-    out, ok_all = {}, True
+    out, ok_all = {}, process.returncode == 0
     for tc in root.iter("testcase"):
         passed = not any(ch.tag in ("failure", "error", "skipped") for ch in tc)
         out[tc.get("name")] = passed
@@ -159,7 +183,7 @@ def _recent_drill(days: int = 7) -> bool:
     try:
         rep = json.loads((ROOT / "reports" / "backup_drill.json").read_text())
         age = datetime.now(timezone.utc) - datetime.fromisoformat(rep["drilled_utc"])
-        return rep.get("ok") is True and age.days < days
+        return rep.get("ok") is True and timedelta(0) <= age < timedelta(days=days)
     except Exception:
         return False
 

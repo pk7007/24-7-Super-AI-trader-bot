@@ -38,19 +38,22 @@ export default function RiskCenter() {
   const q = useRisk();
   return (
     <div className="page stack">
-      <PageHead crumbs="Risk & Operations" title="Risk Management" lede="The limits the bots actually run with, the hard ceilings in code, and which protections are only simulated." />
+      <PageHead crumbs="Risk & Operations" title="Risk Management" lede="The inferred launch profile, hard ceilings in code, and which protections are only simulated. Already-running processes may have loaded different overrides." />
       <DataState q={q} rows={8}>
         {(d) => {
           const rows: PRow[] = Object.keys(d.effective).map((k) => ({ key: k, eff: d.effective[k], ceil: d.policy_ceiling[k] }));
           return (
             <>
+              <Callout tone="warn" title="Runtime configuration is not attested.">
+                {String(d.configuration_source ?? "This view infers settings from the launcher; it does not inspect credentials or the running process's configuration.")}
+              </Callout>
               {d.discrepancies.map((x) => (
                 <Callout key={x} tone="warn" title="Policy discrepancy.">
                   {x}
                 </Callout>
               ))}
               <div className="grid cols-main-side">
-                <Panel title="Effective configuration" meta="paper and shadow share it" flush>
+                <Panel title="Inferred launch configuration" meta="runtime overrides unverified" flush>
                   <Table<PRow>
                     caption="Effective risk configuration versus policy ceiling"
                     rows={rows}

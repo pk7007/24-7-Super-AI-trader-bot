@@ -50,6 +50,9 @@ class LiveFeed(Feed):
         rows = self.ex.fetch_ohlcv(source_symbol(self.cfg, symbol), "1d", limit=min(days + 1, 1000))
         df = rows_to_frame(rows)
         df = df[df.index + pd.Timedelta(days=1) <= self.now()]
+        df, dropped = validate_candles(df)
+        if dropped:
+            raise ValueError("invalid daily candles; portfolio risk cannot be measured")
         return df["close"].astype(float).tail(days)
 
     def range_since(self, symbol: str, since: pd.Timestamp) -> list[tuple[float, float]]:
@@ -72,7 +75,7 @@ class ReplayFeed(Feed):
     def __init__(self, data: dict[str, pd.DataFrame], cfg: Settings,
                  contract_sizes: dict[str, float] | None = None):
         self.data, self.cfg = data, cfg
-        self.cs = contract_sizes or DEFAULT_CONTRACT_SIZE
+        self.cs = contract_sizes if contract_sizes is not None else (SPOT_STEP if cfg.market == "spot" else DEFAULT_CONTRACT_SIZE)
         self.tf = pd.Timedelta(minutes=cfg.tf_minutes)
         self.ts: pd.Timestamp = next(iter(data.values())).index[0]
 

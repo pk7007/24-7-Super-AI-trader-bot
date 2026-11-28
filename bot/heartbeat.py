@@ -56,6 +56,11 @@ def ping(status: Path, opener=_open, timeout: float = 10.0) -> bool | None:
         prev = json.loads(status.read_text()) if status.exists() else {}
     except (OSError, ValueError):
         prev = {}
+    if not isinstance(prev, dict):
+        prev = {}
+    fails = prev.get("fails", 0)
+    if not isinstance(fails, int) or isinstance(fails, bool) or fails < 0:
+        fails = 0
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     try:
         if not url.lower().startswith("https://"):
@@ -64,7 +69,7 @@ def ping(status: Path, opener=_open, timeout: float = 10.0) -> bool | None:
         rec, ok = {"last_ok_utc": now, "last_error": None, "fails": 0}, True
     except Exception as exc:  # noqa: BLE001 - monitoring must never stop trading
         rec = {"last_ok_utc": prev.get("last_ok_utc"), "last_error": f"{now} {type(exc).__name__}",
-               "fails": int(prev.get("fails", 0)) + 1}
+               "fails": fails + 1}
         ok = False
         log.warning("heartbeat ping failed (%s); the outside monitor will alert if this continues", type(exc).__name__)
     try:
@@ -104,6 +109,7 @@ class Pacer:
 def recent_ok(status: Path, minutes: int = 60) -> bool:
     try:
         last = json.loads(Path(status).read_text()).get("last_ok_utc")
-        return bool(last) and datetime.now(timezone.utc) - datetime.fromisoformat(last) < timedelta(minutes=minutes)
-    except (OSError, ValueError, TypeError):
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(last)
+        return timedelta(0) <= age < timedelta(minutes=minutes)
+    except (OSError, ValueError, TypeError, AttributeError):
         return False

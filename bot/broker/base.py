@@ -19,6 +19,7 @@ class Fill:
     realized_pnl: float  # gross PnL of the closing portion (0 for opening fills)
     reason: str
     order_id: str
+    fill_id: str = ""  # stable execution identity; distinct partial trades keep distinct IDs
 
 
 @dataclass
@@ -86,6 +87,13 @@ class Broker(ABC):
     @abstractmethod
     def drain_fills(self) -> list[Fill]:
         """Fills that happened without the bot calling market_order (i.e. stops)."""
+
+    def pending_fills(self) -> list[Fill]:
+        """Read executions without removing them; production brokers override with peek/ack."""
+        return self.drain_fills()
+
+    def ack_fill(self, fill: Fill) -> None:
+        """Acknowledge only after the ledger has durably recorded the execution."""
 
     @abstractmethod
     def tick(self) -> None:

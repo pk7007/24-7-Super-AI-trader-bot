@@ -7,6 +7,7 @@ state
 data
 models
 reports
+backups
 deploy
 refs
 venv
@@ -16,3 +17,5 @@ __pycache__
 *.pyc
 trades_ledger.csv
 *.log
+frontend/node_modules
+frontend/dist

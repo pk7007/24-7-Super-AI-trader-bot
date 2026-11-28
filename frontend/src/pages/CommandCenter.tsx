@@ -119,7 +119,7 @@ export default function CommandCenter() {
                     const got = h.candles_last_24h as number;
                     const exp = h.expected_candles_24h as number;
                     return [
-                      [`${m}: candles logged`, <span className={got < exp ? "down" : undefined}>{got} / {exp}</span>],
+                      [`${m}: candles completed`, <span className={got < exp ? "down" : undefined}>{got} / {exp}</span>],
                       [`${m}: step failures`, <span className={(h.step_failures_24h as number) > 0 ? "down" : undefined}>{String(h.step_failures_24h)}</span>],
                     ] as [string, React.ReactNode][];
                   })}

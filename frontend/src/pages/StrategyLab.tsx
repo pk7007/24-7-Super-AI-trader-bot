@@ -21,10 +21,10 @@ export default function StrategyLab() {
       <PageHead
         crumbs="Research"
         title="Strategy Lab"
-        lede="Every strategy the lab has evaluated, its gate result and the evidence behind it. Only the ensemble runs, and only in paper and shadow."
+        lede="Recorded strategy evaluations and their evidence. A lab gate result does not establish which strategy a running process loaded."
       />
       <Callout tone="warn" title="Read the evidence label.">
-        Rows marked "historical (looser risk)" were measured with 1% risk per trade and 3 positions, not the current 0.5% / 2 policy. Their returns are not comparable with the current-policy row.
+        Historical rows may use older simulation assumptions, different risk settings or a different market profile. They cannot prove current readiness or be compared directly with current-policy results.
       </Callout>
       <DataState q={q} rows={6}>
         {(d) => {
@@ -52,7 +52,7 @@ export default function StrategyLab() {
               </Panel>
               <div className="grid cols-2">
                 {ens ? (
-                  <Panel title="Ensemble · current policy" meta={`evidence: ${ens.evidence_tag ?? "—"}`}>
+                  <Panel title="Ensemble · recorded evidence" meta={`evidence: ${ens.evidence_tag ?? "—"}`} actions={<Badge tone={policyTone(ens.evidence_policy)}>{ens.evidence_policy ?? "missing evidence"}</Badge>}>
                     <KV
                       items={[
                         ["Return (full window)", <Val v={pct(ens.metrics?.return_pct)} tone={dir(ens.metrics?.return_pct)} />],

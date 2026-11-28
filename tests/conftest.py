@@ -15,6 +15,26 @@ from bot.ledger import Ledger  # noqa: E402
 from bot.model import PROB_COLUMNS  # noqa: E402
 from bot.state import State  # noqa: E402
 
+
+@pytest.fixture(autouse=True)
+def isolated_environment(monkeypatch):
+    """Offline tests must never load a developer's credentials or contact a service."""
+    import socket
+    from bot import config
+
+    monkeypatch.setattr(config, "load_env", lambda *a, **k: None)
+
+    for method in ("connect", "connect_ex"):
+        original = getattr(socket.socket, method)
+
+        def local_only(sock, address, _original=original):
+            # asyncio on Windows needs loopback sockets for its event-loop wakeup pipe.
+            if isinstance(address, tuple) and address[0] in ("127.0.0.1", "::1", "localhost"):
+                return _original(sock, address)
+            raise OSError("external network access is disabled in offline tests")
+
+        monkeypatch.setattr(socket.socket, method, local_only)
+
 SYM = "BTC/USD:USD"
 
 

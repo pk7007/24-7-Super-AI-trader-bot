@@ -215,7 +215,7 @@ def load_context(run_dir: Path, market: str = "spot") -> Context:
         errors.append("state.db missing")
     else:
         try:
-            con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True, timeout=5)
+            con = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
             try:
                 for sym, side, n, entry, stop in con.execute(
                         "SELECT symbol, side, contracts, entry, stop FROM positions"):

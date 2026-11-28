@@ -1,0 +1,72 @@
+{
+  "base_commit": "e8cb6c6a03633bfde550c69c396193bee0e9c843",
+  "manual_engineering_score": 5.08,
+  "readiness_score": 41,
+  "live_trading_allowed": false,
+  "runtime_activated": false,
+  "checks": {
+    "windows": {
+      "tests": 378,
+      "passed": true
+    },
+    "linux": {
+      "tests": 378,
+      "passed": true
+    },
+    "frontend": {
+      "tests": 25,
+      "typecheck": true,
+      "build": true
+    },
+    "browser": {
+      "routes_desktop": 15,
+      "routes_mobile": 15,
+      "tablet_sample_routes": 3,
+      "console_errors": 0,
+      "settings_snapshot_accessibility": 100,
+      "limits": "Snapshot accessibility only on Settings. No screenshot baseline or full performance trace."
+    },
+    "pip_known_vulnerabilities": 0,
+    "npm_known_vulnerabilities": 0,
+    "container": "Pinned image built; full offline Linux suite, no network or bot state mounted"
+  },
+  "research": {
+    "simulation_version": 3,
+    "holding_horizon_days": 30,
+    "kind": "repeated development data, no fresh holdout; simulator lacks runtime portfolio ES/exposure veto",
+    "isolated_dsr_limit": "Earlier trial history excluded; not selection-adjusted proof of an edge",
+    "base": {
+      "metrics": {
+        "return_pct": 22.03,
+        "max_drawdown_pct": -6.77,
+        "profit_factor": 1.8,
+        "trades": 123,
+        "win_rate_pct": 28.5,
+        "fees_paid_usd": 2.46
+      },
+      "gate_passed": true
+    },
+    "stress": {
+      "metrics": {
+        "return_pct": 11.41,
+        "max_drawdown_pct": -7.02,
+        "profit_factor": 1.42,
+        "trades": 120,
+        "win_rate_pct": 28.3,
+        "fees_paid_usd": 9.91
+      },
+      "gate_passed": false,
+      "reasons": [
+        "profitable in only 2/4 sub-periods"
+      ]
+    }
+  },
+  "remaining": [
+    "no verified spot adapter",
+    "changed Delta adapter requires authorized testnet validation",
+    "startup fill-history recovery and pagination incomplete",
+    "insufficient forward/uptime evidence",
+    "professional tax/eligibility confirmation absent",
+    "no 48h container soak or off-device recovery drill"
+  ]
+}

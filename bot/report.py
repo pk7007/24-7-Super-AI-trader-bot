@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from .config import Settings
 
 
@@ -11,14 +12,34 @@ def round_trips(fills: list[dict]) -> list[dict]:
     out: list[dict] = []
     for f in fills:
         s = f["symbol"]
+        qty = float(f["qty"])
+        if not all(math.isfinite(float(f[k])) for k in ("qty", "price", "fee", "realized_pnl")) or qty <= 0:
+            raise ValueError("invalid fill in performance evidence")
         if f["reason"] == "entry":
+            if s in open_:
+                t = open_[s]
+                if t["side"] != ("long" if f["side"] == "buy" else "short"):
+                    raise ValueError("conflicting entry sides in ledger")
+                total = t["remaining"] + qty
+                t["entry"] = (t["entry"] * t["remaining"] + f["price"] * qty) / total
+                t["remaining"] = total
+                t["qty"] += qty
+                t["net"] -= f["fee"]
+                continue
             open_[s] = {"symbol": s, "open_ts": f["ts"], "side": "long" if f["side"] == "buy" else "short",
-                        "entry": f["price"], "net": -f["fee"], "qty": f["qty"]}
+                        "entry": f["price"], "net": -f["fee"], "qty": qty, "remaining": qty}
         elif s in open_:
-            t = open_.pop(s)
+            t = open_[s]
+            close_side = "sell" if t["side"] == "long" else "buy"
+            if f["side"] != close_side or qty > t["remaining"] + 1e-9:
+                raise ValueError("exit exceeds recorded position")
             t["net"] += f["realized_pnl"] - f["fee"]
+            t["remaining"] -= qty
             t.update(close_ts=f["ts"], exit=f["price"], reason=f["reason"])
-            out.append(t)
+            if t["remaining"] <= 1e-9:
+                open_.pop(s)
+                t.pop("remaining")
+                out.append(t)
         else:  # exit without a recorded entry (e.g. reconcile)
             out.append({"symbol": s, "open_ts": None, "side": "?", "entry": None, "qty": f["qty"],
                         "net": f["realized_pnl"] - f["fee"], "close_ts": f["ts"], "exit": f["price"],
