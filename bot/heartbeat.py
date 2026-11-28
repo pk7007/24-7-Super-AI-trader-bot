@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import ssl
 import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -22,8 +23,27 @@ from pathlib import Path
 log = logging.getLogger("heartbeat")
 
 
+_CTX: ssl.SSLContext | None = None
+
+
+def _ssl_context() -> ssl.SSLContext:
+    """System trust store plus certifi's bundle (full verification kept). On 2026-11-27 hc-ping.com moved to a
+    Sectigo chain the Windows store did not have yet, and every ping failed; certifi already trusted it."""
+    global _CTX
+    if _CTX is None:
+        ctx = ssl.create_default_context()
+        try:
+            import certifi
+
+            ctx.load_verify_locations(certifi.where())
+        except (ImportError, OSError):
+            log.warning("certifi unavailable; heartbeat uses the system trust store only")
+        _CTX = ctx
+    return _CTX
+
+
 def _open(url: str, timeout: float) -> None:
-    urllib.request.urlopen(url, timeout=timeout).close()
+    urllib.request.urlopen(url, timeout=timeout, context=_ssl_context()).close()
 
 
 def ping(status: Path, opener=_open, timeout: float = 10.0) -> bool | None:

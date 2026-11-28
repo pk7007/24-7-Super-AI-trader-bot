@@ -55,6 +55,14 @@ def test_verify_detects_a_corrupted_file(root):
     assert not r["ok"] and any("paper_exchange.json" in p for p in r["problems"])
 
 
+def test_unreadable_json_fails_verify_and_drill(root):
+    """2026-11-27: a zeroed paper_exchange.json was backed up and the drill still passed."""
+    (root / "state" / "paper" / "paper_exchange.json").write_bytes(b"\0" * 68)
+    r = verify(backup(root, root / "backups"))
+    assert not r["ok"] and any("paper/paper_exchange.json" in p and "JSON" in p for p in r["problems"])
+    assert not drill(root, root / "backups", report=root / "reports" / "d.json")["ok"]
+
+
 def test_restore_refuses_a_non_empty_target(root):
     z = backup(root, root / "backups")
     with pytest.raises(FileExistsError):

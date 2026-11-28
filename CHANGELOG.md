@@ -1,5 +1,12 @@
 # Changelog (no Git commits exist yet; this is the manual history)
 
+## 2026-11-28 (incident: paper bot down about 28 h, heartbeat pings failing)
+* What happened (local time): 27 Nov ~08:43 the PC went to sleep (lid or power button; keep-awake only stops idle sleep), both bots paused. 21:59 unexpected power-off while asleep (Kernel-Power 41 / EventLog 6008, most likely a flat battery). The paper bot's last account save had not reached the disk: `state/paper/paper_exchange.json` came back as 68 zero bytes, and every 10-minute restart crashed on it (`JSONDecodeError`). Shadow restarted fine. Separately, every heartbeat ping since the reboot failed: hc-ping.com moved to a Sectigo certificate chain (`Sectigo Public Server Authentication CA DV E36`) that the Windows trust store did not have; `certifi` did.
+* Fixes: `PaperBroker._save` now flushes and `fsync`s the temp file before the atomic replace. `backup.verify` fails any JSON file that does not parse (the 22:05 backup had captured the zeroed file and its drill still passed). The heartbeat trusts the system store plus `certifi` (full verification kept); `certifi` added to `requirements.txt`. 3 tests; 239 pass.
+* Recovery: zeroed file kept as `paper_exchange.json.corrupt-20261127`; account restored from `backups/state_20261126T205629Z.zip` (cash 113.60, no positions, stops or fills; matches `state.db`, which passed `integrity_check`). Both bots restarted; both pings delivered at 07:15:44 UTC.
+* Lost: paper candles 27 Nov 03:15 UTC to 28 Nov 07:15 UTC; shadow candles while the PC was asleep or off. No trades were affected (both bots were flat).
+* Still open: lid-close and battery sleep pause the bots on this PC; only an always-on server removes that.
+
 ## 2026-11-27 (testnet verification recorded)
 * `testnet-check` passed all 11 steps on the Delta India testnet (market entry, exchange-side stop resting, cancel, reconcile re-places a missing stop, orphan position flattened, fills). Test account left flat.
 * `bot/testnet_check.py` now saves every run, pass or fail, to `reports/testnet_check.json` (steps, evidence, endpoint, time; never keys or error text). `bot/readiness.py` credits "testnet order test" only for a full passing run against the testnet address in the last 30 days. 3 tests; 233 pass.

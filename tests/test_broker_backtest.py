@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -40,6 +42,19 @@ def test_paper_state_survives_restart(world):
     sid = b.place_stop(SYM, "sell", 7, 1.0)
     b2 = PaperBroker(world["feed"], world["cfg"], world["tmp"] / "ex.json")
     assert b2.positions()[SYM].contracts == 7 and sid in b2.open_stop_ids(SYM)
+
+
+def test_paper_save_reaches_the_disk_before_it_replaces_the_account(world, monkeypatch):
+    """A power cut on 2026-11-27 left ex.json as zero bytes: the rename was on disk, the data was not."""
+    import os
+
+    events = []
+    real_fsync, real_replace = os.fsync, os.replace
+    monkeypatch.setattr(os, "fsync", lambda fd: (events.append("fsync"), real_fsync(fd))[1])
+    monkeypatch.setattr(os, "replace", lambda a, b: (events.append("replace"), real_replace(a, b))[1])
+    world["broker"].market_order(SYM, "buy", 3)
+    assert "replace" in events and events.index("fsync") < events.index("replace")
+    assert json.loads((world["tmp"] / "ex.json").read_text())["positions"]
 
 
 def _flat_world(n=60):

@@ -1,4 +1,6 @@
 ccxt>=4.4
+# CA bundle for the outside heartbeat (also pulled in by ccxt/requests); newer than some OS trust stores
+certifi>=2024.2
 pandas>=2.2
 numpy>=1.26
 lightgbm>=4.3
