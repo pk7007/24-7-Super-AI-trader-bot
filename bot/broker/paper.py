@@ -25,8 +25,13 @@ class PaperBroker(Broker):
 
     # ------------------------------------------------------------ persistence
     def _save(self) -> None:
+        """Write a temp file, force it to disk, then swap it in. Without the fsync a power cut can leave the
+        rename on disk but not the data (2026-11-27: the account became 68 zero bytes and the bot could not start)."""
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.s))
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(json.dumps(self.s))
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, self.path)
 
     def _next_id(self) -> str:

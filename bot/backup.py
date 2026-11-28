@@ -96,6 +96,11 @@ def verify(zpath: Path) -> dict:
                 continue
             if _sha(data) != meta["sha256"]:
                 problems.append(f"{name}: hash mismatch")
+            elif name.endswith(".json"):  # a matching hash of a broken file is still a broken backup
+                try:
+                    json.loads(data)
+                except ValueError:
+                    problems.append(f"{name}: not valid JSON")
             elif name.endswith(".db"):
                 with tempfile.TemporaryDirectory() as tmp:
                     p = Path(tmp) / "check.db"

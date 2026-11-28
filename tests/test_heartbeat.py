@@ -99,6 +99,32 @@ def test_failure_is_logged_never_raised_and_url_never_logged(tmp_path, monkeypat
     assert not recent_ok(tmp_path / "hb.json", minutes=60)
 
 
+def test_ping_trusts_certifi_as_well_as_the_system_store(monkeypatch):
+    """2026-11-27: hc-ping.com moved to a Sectigo chain the Windows store lacked; certifi has it."""
+    import ssl
+    import urllib.request
+
+    import certifi
+
+    from bot import heartbeat
+
+    ctx = heartbeat._ssl_context()
+    have = {bytes(c) for c in ctx.get_ca_certs(binary_form=True)}
+    ref = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ref.load_verify_locations(certifi.where())
+    assert {bytes(c) for c in ref.get_ca_certs(binary_form=True)} <= have
+    assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname
+    seen = {}
+
+    class Resp:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda url, timeout, context: (seen.update(ctx=context), Resp())[1])
+    heartbeat._open(URL, 5)
+    assert seen["ctx"] is ctx
+
+
 def test_only_https_is_accepted(tmp_path, monkeypatch):
     monkeypatch.setenv("HEARTBEAT_URL", "http://insecure.example/x")
     op = Opener()
